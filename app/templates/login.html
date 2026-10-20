@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="es" class="h-full">
+<head>
+  <title>Ingresar · IFALFA</title>
+  {% include '_head.html' %}
+</head>
+<body class="h-full bg-gradient-to-br from-brand-900 via-brand-700 to-brand-500 grid place-items-center p-4">
+  <div class="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-7">
+    <div class="text-center mb-6">
+      <div class="mx-auto w-14 h-14 rounded-xl bg-brand-600 grid place-items-center text-white text-xl font-bold">IF</div>
+      <h1 class="mt-3 text-xl font-bold text-brand-800">IFALFA</h1>
+      <p class="text-sm text-slate-500">Instituto de Educación Musical</p>
+    </div>
+    {% for cat, msg in get_flashed_messages(with_categories=true) %}
+      <div class="mb-4 rounded-lg px-3 py-2 text-sm bg-red-50 text-red-800 border border-red-200">{{ msg }}</div>
+    {% endfor %}
+    <form method="post" class="space-y-4">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="block text-sm font-medium">Usuario
+        <input name="usuario" required autofocus autocomplete="username"
+               class="mt-1 w-full rounded-lg border-slate-300 border px-3 py-2 focus:ring-2 focus:ring-brand-500 outline-none">
+      </label>
+      <label class="block text-sm font-medium">Contraseña
+        <input name="password" type="password" required autocomplete="current-password"
+               class="mt-1 w-full rounded-lg border-slate-300 border px-3 py-2 focus:ring-2 focus:ring-brand-500 outline-none">
+      </label>
+      <button class="w-full rounded-lg bg-brand-600 hover:bg-brand-700 text-white font-semibold py-2.5">Ingresar</button>
+    </form>
+  </div>
+</body>
+</html>

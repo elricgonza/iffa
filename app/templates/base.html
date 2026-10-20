@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="es" class="h-full bg-slate-100">
+<head>
+  <title>{% block title %}Inicio{% endblock %} · IFALFA</title>
+  {% include '_head.html' %}
+  <script>
+    function app() {
+      return {
+        sidebar: false, modal: false, toasts: [],
+        push(d) {
+          const t = { id: Math.random(), msg: d.msg, type: d.type || 'ok' };
+          this.toasts.push(t);
+          setTimeout(() => { this.toasts = this.toasts.filter(x => x.id !== t.id); }, 4500);
+        }
+      };
+    }
+    document.addEventListener('htmx:responseError', e => {
+      const s = e.detail.xhr.status;
+      const m = {400: 'Solicitud no válida (¿sesión expirada? recargue la página)',
+                 403: 'No tiene permiso para esta acción', 404: 'Registro no encontrado'}[s]
+                || ('Error del servidor (' + s + ')');
+      window.dispatchEvent(new CustomEvent('toast', { detail: { msg: m, type: 'error' } }));
+    });
+  </script>
+</head>
+<body class="h-full text-slate-800" x-data="app()" @toast.window="push($event.detail)"
+      hx-headers='{"X-CSRFToken": "{{ csrf_token() }}"}'>
+
+  <!-- Barra superior (móvil) -->
+  <header class="md:hidden fixed top-0 inset-x-0 z-30 h-14 bg-brand-600 text-white flex items-center px-3 gap-3 shadow">
+    <button @click="sidebar = !sidebar" aria-label="Menú" class="p-2 rounded hover:bg-brand-700">
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    <span class="font-semibold tracking-wide">IFALFA</span>
+  </header>
+
+  <div x-show="sidebar" x-cloak class="fixed inset-0 z-30 bg-black/40 md:hidden" @click="sidebar = false"></div>
+
+  <!-- Menú lateral -->
+  <aside class="fixed z-40 inset-y-0 left-0 w-64 bg-brand-800 text-slate-200 flex flex-col transform transition-transform md:translate-x-0"
+         :class="sidebar ? 'translate-x-0' : '-translate-x-full'">
+    <a href="{{ url_for('main.inicio') }}" class="h-16 flex items-center gap-3 px-5 bg-brand-900 border-b border-white/10">
+      <span class="w-9 h-9 rounded-lg bg-brand-500 grid place-items-center font-bold text-white">IF</span>
+      <span class="leading-tight"><span class="block font-bold text-white">IFALFA</span>
+      <span class="block text-[11px] text-slate-400">Instituto de Educación Musical</span></span>
+    </a>
+    <nav class="flex-1 overflow-y-auto py-3 text-sm">
+      <a href="{{ url_for('main.inicio') }}" class="block px-5 py-2 hover:bg-white/10 {{ 'bg-white/10 font-semibold text-white' if request.endpoint == 'main.inicio' }}">Inicio</a>
+      {% for titulo, items in menu %}
+        <p class="px-5 pt-4 pb-1 text-[11px] uppercase tracking-wider text-slate-400">{{ titulo }}</p>
+        {% for label, url, key in items %}
+          <a href="{{ url }}" @click="sidebar = false"
+             class="block px-5 py-2 hover:bg-white/10 {{ 'bg-brand-600 text-white font-semibold' if request.view_args and request.view_args.get('key') == key }}">{{ label }}</a>
+        {% endfor %}
+      {% endfor %}
+    </nav>
+    <div class="p-4 border-t border-white/10 text-sm">
+      <a href="{{ url_for('auth.perfil') }}" class="block font-medium text-white truncate hover:underline">{{ current_user.usuario }}</a>
+      <p class="text-xs text-slate-400 truncate mb-2">{{ current_user.roles|join(', ') }}</p>
+      <form method="post" action="{{ url_for('auth.logout') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="w-full text-left text-xs px-3 py-2 rounded bg-white/10 hover:bg-white/20">Cerrar sesión</button>
+      </form>
+    </div>
+  </aside>
+
+  <!-- Contenido -->
+  <main class="md:ml-64 pt-14 md:pt-0 min-h-full">
+    <div class="p-4 md:p-6 max-w-7xl mx-auto">
+      {% for cat, msg in get_flashed_messages(with_categories=true) %}
+        <div class="mb-4 rounded-lg px-4 py-3 text-sm {{ 'bg-red-50 text-red-800 border border-red-200' if cat == 'error' else 'bg-emerald-50 text-emerald-800 border border-emerald-200' }}">{{ msg }}</div>
+      {% endfor %}
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+
+  <!-- Ventana modal (formularios HTMX) -->
+  <div x-show="modal" x-cloak class="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4"
+       @keydown.escape.window="modal = false" @close-modal.window="modal = false">
+    <div class="absolute inset-0 bg-slate-900/50" @click="modal = false"></div>
+    <div id="modal-body" class="relative w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto bg-white rounded-t-2xl sm:rounded-2xl shadow-xl"></div>
+  </div>
+
+  <!-- Avisos -->
+  <div class="fixed z-[60] bottom-4 right-4 left-4 sm:left-auto sm:w-96 space-y-2 pointer-events-none">
+    <template x-for="t in toasts" :key="t.id">
+      <div x-transition class="pointer-events-auto rounded-lg px-4 py-3 text-sm shadow-lg text-white"
+           :class="t.type === 'error' ? 'bg-red-600' : 'bg-emerald-600'" x-text="t.msg"></div>
+    </template>
+  </div>
+</body>
+</html>

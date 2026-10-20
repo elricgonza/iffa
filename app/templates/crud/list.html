@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block title %}{{ r.title }}{% endblock %}
+{% block content %}
+<div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+  <h1 class="text-xl font-bold text-brand-800">{{ r.title }}</h1>
+  <div class="flex flex-wrap gap-2">
+    {% if r.toolbar and current_user.has_perm(r.perm('editar')) %}{% include r.toolbar %}{% endif %}
+    {% if r.puede_crear(current_user) %}
+      <button class="rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2"
+              hx-get="{{ url_for('crud.nuevo', key=r.key) }}" hx-target="#modal-body" hx-swap="innerHTML"
+              @click="modal = true">+ Nuevo</button>
+    {% endif %}
+  </div>
+</div>
+
+<form class="mb-4 grid grid-cols-1 sm:flex sm:flex-wrap gap-2"
+      hx-get="{{ url_for('crud.index', key=r.key) }}" hx-target="#table-wrap" hx-swap="innerHTML"
+      hx-push-url="true" hx-trigger="input delay:300ms, submit">
+  {% if r.search %}
+    <input type="search" name="q" value="{{ args.get('q', '') }}" placeholder="Buscar…" autocomplete="off"
+           class="sm:w-72 rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 outline-none">
+  {% endif %}
+  {% for f in r.filters %}
+    <select name="{{ f.name }}" aria-label="{{ f.label }}"
+            class="rounded-lg border px-3 py-2 text-sm bg-white sm:max-w-xs focus:ring-2 focus:ring-brand-500 outline-none">
+      <option value="">{{ f.label }}: todos</option>
+      {% for v, l in f.options() %}
+        <option value="{{ v }}" {{ 'selected' if args.get(f.name) == v|string }}>{{ l }}</option>
+      {% endfor %}
+    </select>
+  {% endfor %}
+</form>
+
+<div id="table-wrap">{% include 'crud/_table.html' %}</div>
+{% endblock %}

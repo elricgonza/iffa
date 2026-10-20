@@ -1,0 +1,7 @@
+Flask>=3.0,<4
+Flask-SQLAlchemy>=3.1,<4
+Flask-Login>=0.6.3
+Flask-WTF>=1.2          # solo se usa la protección CSRF
+psycopg[binary]>=3.1    # driver PostgreSQL (URI: postgresql+psycopg://)
+python-dotenv>=1.0
+gunicorn>=22.0

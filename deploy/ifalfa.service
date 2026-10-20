@@ -1,0 +1,15 @@
+[Unit]
+Description=IFALFA - gestión del Instituto (Gunicorn)
+After=network.target postgresql.service
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/ifalfa
+EnvironmentFile=/opt/ifalfa/.env
+ExecStart=/opt/ifalfa/venv/bin/gunicorn --workers 3 --bind unix:/run/ifalfa/ifalfa.sock wsgi:app
+RuntimeDirectory=ifalfa
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

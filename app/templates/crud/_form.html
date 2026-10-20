@@ -1,0 +1,67 @@
+<form hx-post="{{ url_for('crud.guardar', key=r.key) }}" hx-target="#modal-body" hx-swap="innerHTML" class="p-5">
+  <input type="hidden" name="id" value="{{ obj.id if obj else '' }}">
+  <div class="flex items-start justify-between mb-4">
+    <h2 class="text-lg font-bold text-brand-800">{{ 'Editar' if obj else 'Nuevo' }} · {{ r.singular }}</h2>
+    <button type="button" @click="modal = false" class="text-slate-400 hover:text-slate-700 text-2xl leading-none" aria-label="Cerrar">&times;</button>
+  </div>
+  {% if errors.get('__all__') %}
+    <div class="mb-4 rounded-lg px-3 py-2 text-sm bg-red-50 text-red-800 border border-red-200">{{ errors['__all__'] }}</div>
+  {% endif %}
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    {% for f in r.fields %}
+      {% set err = errors.get(f.name) %}
+      {% set wide = f.type in ('textarea', 'multiselect') or f.help %}
+      <div class="{{ 'sm:col-span-2' if f.type in ('textarea', 'multiselect') }}">
+        {% if f.create_only and obj and f.virtual %}
+          {# campo auxiliar solo de alta: no se muestra al editar #}
+        {% elif f.create_only and obj %}
+          <p class="block text-sm font-medium text-slate-700">{{ f.label }}</p>
+          <p class="mt-1 px-3 py-2 rounded-lg bg-slate-50 border text-sm text-slate-600">
+            {% if f.options %}{% for v, l in f.options() if v|string == values[f.name] %}{{ l }}{% endfor %}
+            {% else %}{{ values[f.name] }}{% endif %}
+          </p>
+        {% elif f.type == 'bool' %}
+          <label class="flex items-center gap-2 text-sm font-medium text-slate-700 pt-6">
+            <input type="checkbox" name="{{ f.name }}" {{ 'checked' if values[f.name] }}
+                   class="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"> {{ f.label }}
+          </label>
+        {% else %}
+          <label for="f_{{ f.name }}" class="block text-sm font-medium text-slate-700">{{ f.label }}{% if f.required or (f.req_create and not obj) %} <span class="text-red-500">*</span>{% endif %}</label>
+          {% set cls = 'mt-1 w-full rounded-lg border px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-brand-500 outline-none ' ~ ('border-red-400' if err else 'border-slate-300') %}
+          {% if f.type == 'select' %}
+            <select id="f_{{ f.name }}" name="{{ f.name }}" class="{{ cls }}">
+              <option value="">— Seleccione —</option>
+              {% for v, l in f.options() %}
+                <option value="{{ v }}" {{ 'selected' if v|string == values[f.name] }}>{{ l }}</option>
+              {% endfor %}
+            </select>
+          {% elif f.type == 'multiselect' %}
+            <div class="mt-1 max-h-44 overflow-y-auto rounded-lg border p-2 grid grid-cols-1 sm:grid-cols-2 gap-1 {{ 'border-red-400' if err else 'border-slate-300' }}">
+              {% for v, l in f.options() %}
+                <label class="flex items-center gap-2 text-sm py-0.5">
+                  <input type="checkbox" name="{{ f.name }}" value="{{ v }}" {{ 'checked' if v|string in values[f.name] }}
+                         class="h-4 w-4 rounded border-slate-300 text-brand-600"> {{ l }}
+                </label>
+              {% else %}<span class="text-sm text-slate-400">Sin opciones</span>{% endfor %}
+            </div>
+          {% elif f.type == 'textarea' %}
+            <textarea id="f_{{ f.name }}" name="{{ f.name }}" rows="3" class="{{ cls }}">{{ values[f.name] }}</textarea>
+          {% else %}
+            {% set tipo = {'number': 'number', 'decimal': 'text', 'date': 'date', 'datetime': 'datetime-local',
+                           'email': 'email', 'password': 'password'}.get(f.type, 'text') %}
+            <input id="f_{{ f.name }}" name="{{ f.name }}" type="{{ tipo }}" value="{{ values[f.name] }}" class="{{ cls }}"
+                   {% if f.type == 'number' %}step="1"{% if f.min is not none %} min="{{ f.min|int }}"{% endif %}{% if f.max is not none %} max="{{ f.max|int }}"{% endif %}{% endif %}
+                   {% if f.type == 'decimal' %}inputmode="decimal"{% endif %}
+                   {% if f.type == 'password' %}autocomplete="new-password"{% endif %}>
+          {% endif %}
+          {% if f.help and not err %}<p class="mt-1 text-xs text-slate-500">{{ f.help }}</p>{% endif %}
+          {% if err %}<p class="mt-1 text-xs text-red-600">{{ err }}</p>{% endif %}
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+  <div class="mt-6 flex justify-end gap-2">
+    <button type="button" @click="modal = false" class="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50">Cancelar</button>
+    <button class="rounded-lg bg-brand-600 hover:bg-brand-700 text-white px-5 py-2 text-sm font-medium">Guardar</button>
+  </div>
+</form>

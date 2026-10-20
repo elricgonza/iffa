@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% block title %}Mi perfil{% endblock %}
+{% block content %}
+<h1 class="text-xl font-bold text-brand-800 mb-4">Mi perfil</h1>
+<div class="max-w-md bg-white rounded-xl shadow-sm border p-5">
+  <p class="text-sm mb-4"><span class="text-slate-500">Usuario:</span> <strong>{{ current_user.usuario }}</strong><br>
+  <span class="text-slate-500">Roles:</span> {{ current_user.roles|join(', ') }}</p>
+  <form method="post" class="space-y-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <h2 class="font-semibold">Cambiar contraseña</h2>
+    {% for n, l in (('actual','Contraseña actual'),('nueva','Nueva contraseña'),('confirmar','Confirmar nueva')) %}
+      <label class="block text-sm">{{ l }}
+        <input type="password" name="{{ n }}" required autocomplete="{{ 'current-password' if n == 'actual' else 'new-password' }}"
+               class="mt-1 w-full rounded-lg border px-3 py-2 focus:ring-2 focus:ring-brand-500 outline-none"></label>
+    {% endfor %}
+    <button class="rounded-lg bg-brand-600 hover:bg-brand-700 text-white px-4 py-2">Guardar</button>
+  </form>
+</div>
+{% endblock %}

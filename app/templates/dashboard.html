@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1 class="text-2xl font-bold text-brand-800 mb-1">Bienvenido, {{ current_user.usuario }}</h1>
+<p class="text-sm text-slate-500 mb-6">
+  {% if scope == 'profesor' %}Se muestran únicamente los datos de sus materias asignadas.
+  {% elif scope == 'estudiante' %}Se muestran únicamente sus propios datos.
+  {% elif scope == 'none' %}Su cuenta no está vinculada a un registro de profesor/estudiante; contacte al administrador.
+  {% else %}Resumen general del instituto.{% endif %}
+</p>
+<div class="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
+  {% for label, total, url in tiles %}
+    <a href="{{ url }}" class="rounded-xl bg-white shadow-sm border p-4 hover:shadow-md hover:border-brand-300 transition">
+      <p class="text-3xl font-bold text-brand-600">{{ total }}</p>
+      <p class="text-sm text-slate-500">{{ label }}</p>
+    </a>
+  {% endfor %}
+</div>
+{% if pendientes %}
+  <div class="mt-5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 text-sm">
+    Hay <strong>{{ pendientes }}</strong> cuota(s) de pago pendiente(s).
+    <a class="underline font-medium" href="{{ url_for('crud.index', key='pago', estado='pendiente') }}">Ver pendientes</a>
+  </div>
+{% endif %}
+{% endblock %}

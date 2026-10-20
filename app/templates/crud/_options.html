@@ -1,0 +1,2 @@
+<option value="">{{ vacio }}</option>
+{% for v, l in opciones %}<option value="{{ v }}" {{ 'selected' if v|string == actual|string }}>{{ l }}</option>{% endfor %}
