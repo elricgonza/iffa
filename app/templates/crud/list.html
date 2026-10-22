@@ -23,9 +23,11 @@
   {% for f in r.filters %}
     <select name="{{ f.name }}" aria-label="{{ f.label }}"
             class="rounded-lg border px-3 py-2 text-sm bg-white sm:max-w-xs focus:ring-2 focus:ring-brand-500 outline-none">
-      <option value="">{{ f.label }}: todos</option>
+      {% set actual = args.get(f.name) %}
+      {% if actual is none %}{% set actual = f.default %}{% endif %}
+      {% if not f.default %}<option value="">{{ f.label }}: todos</option>{% endif %}
       {% for v, l in f.options() %}
-        <option value="{{ v }}" {{ 'selected' if args.get(f.name) == v|string }}>{{ l }}</option>
+        <option value="{{ v }}" {{ 'selected' if actual == v|string }}>{{ l }}</option>
       {% endfor %}
     </select>
   {% endfor %}

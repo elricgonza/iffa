@@ -17,7 +17,9 @@
         {% elif f.create_only and obj %}
           <p class="block text-sm font-medium text-slate-700">{{ f.label }}</p>
           <p class="mt-1 px-3 py-2 rounded-lg bg-slate-50 border text-sm text-slate-600">
-            {% if f.options %}{% for v, l in f.options() if v|string == values[f.name] %}{{ l }}{% endfor %}
+            {% if f.type == 'search' %}{{ r.search_label(f, values[f.name]) }}
+            {% elif f.depends_on %}{{ r.related_label(obj, f) }}
+            {% elif f.options %}{% for v, l in f.options() if v|string == values[f.name] %}{{ l }}{% endfor %}
             {% else %}{{ values[f.name] }}{% endif %}
           </p>
         {% elif f.type == 'bool' %}
@@ -28,8 +30,36 @@
         {% else %}
           <label for="f_{{ f.name }}" class="block text-sm font-medium text-slate-700">{{ f.label }}{% if f.required or (f.req_create and not obj) %} <span class="text-red-500">*</span>{% endif %}</label>
           {% set cls = 'mt-1 w-full rounded-lg border px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-brand-500 outline-none ' ~ ('border-red-400' if err else 'border-slate-300') %}
-          {% if f.type == 'select' %}
+          {% if f.type == 'search' %}
+            <div x-data='searchSelect({{ values[f.name]|tojson }}, {{ r.search_label(f, values[f.name])|tojson }})'>
+              <input type="hidden" name="{{ f.name }}" :value="id">
+              <div x-show="id" class="mt-1 flex items-center justify-between gap-2 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-sm">
+                <span x-text="label" class="font-medium text-brand-800"></span>
+                <button type="button" @click="clear()" class="text-xs text-red-600 hover:underline">Cambiar</button>
+              </div>
+              <div x-show="!id">
+                <input x-ref="q" type="search" name="q" autocomplete="off" placeholder="Nombre, apellido o C.I. …"
+                       class="{{ cls }}" @keydown.enter.prevent
+                       hx-get="{{ url_for('crud.buscar', key=r.key, fname=f.name) }}"
+                       hx-trigger="input changed delay:250ms" hx-target="#res_{{ f.name }}" hx-swap="innerHTML">
+                <div id="res_{{ f.name }}" x-ref="res"
+                     class="mt-1 rounded-lg border border-slate-200 bg-white shadow-sm max-h-56 overflow-y-auto empty:hidden"></div>
+              </div>
+            </div>
+          {% elif f.type == 'select' and f.depends_on %}
+            {% set padre = values.get(f.depends_on) %}
+            {% set ops = f.dep_options(padre) if padre else [] %}
             <select id="f_{{ f.name }}" name="{{ f.name }}" class="{{ cls }}">
+              <option value="">{{ '— Seleccione primero el campo anterior —' if not padre else ('— Seleccione —' if ops else '— Sin opciones disponibles —') }}</option>
+              {% for v, l in ops %}
+                <option value="{{ v }}" {{ 'selected' if v|string == values[f.name] }}>{{ l }}</option>
+              {% endfor %}
+            </select>
+          {% elif f.type == 'select' %}
+            {% set hijos = r.fields|selectattr('depends_on', 'equalto', f.name)|list %}
+            <select id="f_{{ f.name }}" name="{{ f.name }}" class="{{ cls }}"
+                    {% if hijos %}hx-get="{{ url_for('crud.opciones', key=r.key, fname=hijos[0].name) }}"
+                    hx-target="#f_{{ hijos[0].name }}" hx-swap="innerHTML" hx-trigger="change"{% endif %}>
               <option value="">— Seleccione —</option>
               {% for v, l in f.options() %}
                 <option value="{{ v }}" {{ 'selected' if v|string == values[f.name] }}>{{ l }}</option>

@@ -1,10 +1,11 @@
 """Declaración de los recursos (tablas) administrables, sus formularios,
 reglas de validación y alcance de datos según el rol."""
+import unicodedata
 from datetime import datetime
 
 from flask import current_app
 from flask_login import current_user
-from sqlalchemy import cast, false, inspect as sa_inspect, or_, String
+from sqlalchemy import and_, cast, false, func, inspect as sa_inspect, or_, String, true
 from sqlalchemy.orm import selectinload
 
 from .crud import Col, Field, Filter, Resource
@@ -35,10 +36,27 @@ def static(values):
     return lambda: [(v, v) for v in values]
 
 
+_CON_TILDE, _SIN_TILDE = "áéíóúüñÁÉÍÓÚÜÑ", "aeiouunAEIOUUN"
+
+
+def _norm(texto):
+    t = unicodedata.normalize("NFD", texto)
+    return "".join(ch for ch in t if unicodedata.category(ch) != "Mn").lower()
+
+
 def like(*cols):
+    """Búsqueda por palabras: cada palabra debe aparecer en alguna de las columnas
+    (nombre, apellidos, C.I., ...), sin distinguir mayúsculas ni tildes.
+    Ej.: «maria per» encuentra «Pérez Gómez María»."""
     def fn(s):
-        pat = f"%{s}%"
-        return or_(*[(cast(c, String) if not isinstance(c.type, String) else c).ilike(pat) for c in cols])
+        conds = []
+        for tok in _norm(s).split()[:6]:
+            pat = "%" + tok.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+            conds.append(or_(*[
+                func.lower(func.translate(c if isinstance(c.type, String) else cast(c, String),
+                                          _CON_TILDE, _SIN_TILDE)).like(pat, escape="\\")
+                for c in cols]))
+        return and_(*conds) if conds else true()
     return fn
 
 
@@ -262,6 +280,42 @@ def _before_delete_inscrito(ins):
         db.session.delete(p)
 
 
+def cursos_de_instrumento(id_instrumento):
+    """Cursos del instrumento indicado (vía su grado) en la(s) gestión(es) activa(s)."""
+    try:
+        iid = int(id_instrumento)
+    except (TypeError, ValueError):
+        return []
+    q = (Curso.query.join(Gestion, Curso.id_gestion == Gestion.id).join(Grado, Curso.id_grado == Grado.id)
+         .filter(Gestion.activo.is_(True), Grado.id_instrumento == iid)
+         .options(selectinload(Curso.gestion), selectinload(Curso.grado))
+         .order_by(Grado.grado, Curso.paralelo))
+    return [(c.id, str(c)) for c in q]
+
+
+def _etiqueta_alumno(a):
+    return f"{a.nombre_completo} · C.I. {a.ci or '—'}"
+
+
+def buscar_alumnos(texto):
+    """Alumnos activos cuyo nombre, apellido(s) o C.I. contenga las palabras escritas."""
+    q = (Alumno.query.filter(Alumno.activo.is_(True),
+                             like(Alumno.nombre, Alumno.paterno, Alumno.materno, Alumno.ci)(texto))
+         .order_by(Alumno.paterno, Alumno.materno, Alumno.nombre).limit(15))
+    return [(a.id, _etiqueta_alumno(a)) for a in q]
+
+
+def _opts_gestion_filtro():
+    ges = [(g.id, str(g)) for g in Gestion.query.order_by(Gestion.gestion.desc(), Gestion.id.desc())]
+    return [("activa", "Gestión activa")] + ges + [("todas", "Todas las gestiones")]
+
+
+def _filtro_gestion(q, v):
+    if v == "activa":
+        return q.filter(Curso.id_gestion.in_(db.session.query(Gestion.id).filter(Gestion.activo.is_(True))))
+    return q.filter(Curso.id_gestion == int(v))
+
+
 _ins_base = lambda: (Inscrito.query.join(Alumno, Inscrito.id_alumno == Alumno.id)
                      .join(Curso, Inscrito.id_curso == Curso.id))
 _eager_ins = [selectinload(Inscrito.alumno), selectinload(Inscrito.curso).selectinload(Curso.gestion),
@@ -271,11 +325,14 @@ _opts_inscrito = opts(Inscrito, eager=_eager_ins, where=Inscrito.inscrito.is_(Tr
 Resource(
     "inscrito", Inscrito, "Inscripciones", "Inscripción",
     fields=[
-        Field("id_alumno", "Alumno", "select", required=True, create_only=True,
-              options=opts(Alumno, [Alumno.paterno, Alumno.nombre], where=Alumno.activo.is_(True))),
-        Field("id_curso", "Curso", "select", required=True, create_only=True, options=_opts_curso),
-        Field("id_instrumento", "Instrumento", "select", required=True,
+        Field("id_alumno", "Alumno", "search", required=True, create_only=True, target=Alumno,
+              search=buscar_alumnos, label_fn=_etiqueta_alumno, check=lambda a: a.activo,
+              help="Busque por nombre, apellido o C.I. (puede combinar palabras)."),
+        Field("id_instrumento", "Instrumento", "select", required=True, create_only=True,
               options=opts(Instrumento, [Instrumento.instrumento])),
+        Field("id_curso", "Curso (gestión activa)", "select", required=True, create_only=True,
+              depends_on="id_instrumento", dep_options=cursos_de_instrumento,
+              help="Solo cursos del instrumento elegido en la gestión activa."),
         Field("inscrito", "Inscrito (confirmado)", "bool", default=True),
         Field("reserva", "Reserva de cupo", "bool"),
         Field("abandono", "Abandono", "bool"),
@@ -287,16 +344,17 @@ Resource(
               help="Si se deja vacío se usa la cuota base configurada (CUOTA_BASE)."),
         Field("obs", "Observaciones"),
     ],
-    columns=[Col("Alumno", "alumno.nombre_completo"), Col("Curso", "curso"),
+    columns=[Col("Alumno", "alumno.nombre_completo"), Col("C.I.", "alumno.ci", hide=True), Col("Curso", "curso"),
              Col("Instrumento", "instrumento.instrumento", hide=True),
              Col("Desc. %", "descuento", hide=True), Col("Inscrito", "inscrito", "bool"),
              Col("Abandono", "abandono", "bool", True)],
     query=_ins_base, scope=_scope_inscrito,
     search=like(Alumno.nombre, Alumno.paterno, Alumno.materno, Alumno.ci),
-    filters=[Filter("id_curso", "Curso", _opts_curso, lambda q, v: q.filter(Inscrito.id_curso == int(v))),
-             Filter("id_gestion", "Gestión", opts(Gestion, [Gestion.gestion.desc()]),
-                    lambda q, v: q.filter(Curso.id_gestion == int(v)))],
-    order=lambda: [Curso.id_gestion.desc(), Alumno.paterno, Alumno.nombre],
+    filters=[Filter("id_gestion", "Gestión", _opts_gestion_filtro, _filtro_gestion, default="activa"),
+             Filter("id_instrumento", "Instrumento", opts(Instrumento, [Instrumento.instrumento]),
+                    lambda q, v: q.filter(Inscrito.id_instrumento == int(v))),
+             Filter("id_curso", "Curso", _opts_curso, lambda q, v: q.filter(Inscrito.id_curso == int(v)))],
+    order=lambda: [Curso.id_gestion.desc(), Alumno.paterno, Alumno.materno, Alumno.nombre],
     validate=_validar_inscrito, before_save=_before_save_inscrito,
     after_save=_after_save_inscrito, before_delete=_before_delete_inscrito,
 )

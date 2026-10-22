@@ -38,6 +38,11 @@ class Field:
     max: Optional[float] = None
     default: Any = None
     maxlength: Optional[int] = None
+    depends_on: Optional[str] = None  # select dependiente: nombre del campo padre
+    dep_options: Optional[Callable] = None  # (valor_padre) -> [(valor, etiqueta)]
+    search: Optional[Callable] = None  # type="search": (texto) -> [(id, etiqueta)]
+    label_fn: Optional[Callable] = None  # etiqueta de un registro (type="search")
+    check: Optional[Callable] = None  # validación extra del registro elegido (type="search")
 
     @property
     def a(self):
@@ -58,6 +63,7 @@ class Filter:
     label: str
     options: Callable
     apply: Callable  # (query, valor_str) -> query
+    default: Optional[str] = None  # valor aplicado cuando el parámetro no viene en la URL
 
 
 def _dotted(obj, path):
@@ -109,14 +115,20 @@ class Resource:
                 and (self._can_delete(obj, user) if self._can_delete else True))
 
     # ---- consultas
-    def build_query(self, args, user):
+    def build_query(self, args, user, defaults=True):
         q = self.query() if self.query else self.model.query
         if self.scope:
             q = self.scope(q)
         for f in self.filters:
             v = args.get(f.name)
-            if v:
-                q = f.apply(q, v)
+            if v is None and defaults:
+                v = f.default
+            if v and v != "todas":
+                try:
+                    q = f.apply(q, v)
+                except ValueError:  # parámetro manipulado: se vuelve al valor por defecto
+                    if f.default and v != f.default:
+                        q = f.apply(q, f.default)
         s = (args.get("q") or "").strip()
         if s and self.search:
             q = q.filter(self.search(s))
@@ -131,7 +143,7 @@ class Resource:
 
     def get_visible(self, oid):
         """Obtiene el registro solo si está dentro del alcance del usuario."""
-        obj = self.build_query({}, current_user).filter(self.model.id == oid).first()
+        obj = self.build_query({}, current_user, defaults=False).filter(self.model.id == oid).first()
         if obj is None:
             abort(404)
         return obj
@@ -150,6 +162,20 @@ class Resource:
         if col.kind == "money":
             return f"{float(v):,.2f}"
         return str(v)
+
+    def search_label(self, f, raw):
+        """Etiqueta del registro elegido en un campo type="search"."""
+        if not raw or not str(raw).isdigit():
+            return ""
+        o = db.session.get(f.target, int(raw))
+        if o is None:
+            return ""
+        return f.label_fn(o) if f.label_fn else str(o)
+
+    def related_label(self, obj, f):
+        """Texto del registro relacionado (id_curso -> obj.curso) para campos solo de alta."""
+        rel = getattr(obj, f.a[3:], None) if f.a.startswith("id_") else None
+        return str(rel) if rel is not None else ""
 
     def raw(self, obj, col):
         return col.getter(obj) if callable(col.getter) else _dotted(obj, col.getter)
@@ -219,7 +245,7 @@ class Resource:
                 else:
                     raw = (form.get(f.name) or "").strip()
                     empty = raw == ""
-                    val = None if empty else self._coerce(f, raw)
+                    val = None if empty else self._coerce(f, raw, form)
             except ValueError as e:
                 errors[f.name] = str(e) or "Valor no válido"
                 continue
@@ -241,7 +267,7 @@ class Resource:
             data[f.name] = val
         return data, errors
 
-    def _coerce(self, f, raw):
+    def _coerce(self, f, raw, form=None):
         t = f.type
         if t in ("text", "textarea", "password"):
             return raw
@@ -269,8 +295,19 @@ class Resource:
                 return datetime.fromisoformat(raw)
             except ValueError:
                 raise ValueError("Fecha y hora no válidas")
+        if t == "search":
+            if not raw.isdigit():
+                raise ValueError("Selección no válida")
+            o = db.session.get(f.target, int(raw))
+            if o is None or (f.check and not f.check(o)):
+                raise ValueError("Selección no válida")
+            return int(raw)
         if t == "select":
-            validos = {str(v) for v, _ in f.options()}
+            if f.depends_on:  # opciones según el campo padre (p. ej. cursos del instrumento)
+                opciones = f.dep_options(form.get(f.depends_on) if form else None)
+            else:
+                opciones = f.options()
+            validos = {str(v) for v, _ in opciones}
             if raw not in validos:
                 raise ValueError("Selección no válida")
             return int(raw) if raw.lstrip("-").isdigit() else raw
@@ -339,6 +376,38 @@ def index(key):
     pagination = r.paginate(request.args, current_user)
     tpl = "crud/_table.html" if request.headers.get("HX-Target") == "table-wrap" else "crud/list.html"
     return render_template(tpl, r=r, pagination=pagination, args=request.args)
+
+
+def _necesita_form(r):
+    if not (current_user.has_perm(r.perm("crear")) or current_user.has_perm(r.perm("editar"))):
+        abort(403)
+
+
+@bp.route("/<key>/opciones/<fname>")
+@login_required
+def opciones(key, fname):
+    """Opciones de un select dependiente (p. ej. cursos según el instrumento elegido)."""
+    r = _res(key)
+    _necesita_form(r)
+    f = next((x for x in r.fields if x.name == fname and x.depends_on), None) or abort(404)
+    padre = request.args.get(f.depends_on)
+    ops = f.dep_options(padre) if padre else []
+    vacio = ("— Seleccione primero el campo anterior —" if not padre
+             else "— Seleccione —" if ops else "— Sin opciones disponibles —")
+    return render_template("crud/_options.html", opciones=ops, vacio=vacio, actual="")
+
+
+@bp.route("/<key>/buscar/<fname>")
+@login_required
+def buscar(key, fname):
+    """Búsqueda en vivo para campos type="search" (p. ej. alumno por nombre, apellido o C.I.)."""
+    r = _res(key)
+    _necesita_form(r)
+    f = next((x for x in r.fields if x.name == fname and x.type == "search"), None) or abort(404)
+    texto = (request.args.get("q") or "").strip()
+    if len(texto) < 2:
+        return render_template("crud/_search_results.html", items=[], msg="Escriba al menos 2 caracteres")
+    return render_template("crud/_search_results.html", items=f.search(texto)[:15], msg=None)
 
 
 @bp.route("/<key>/nuevo")

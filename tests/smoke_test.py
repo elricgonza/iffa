@@ -12,7 +12,7 @@ if os.environ.get("SMOKE_TEST_CONFIRM") != "yes":
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app import create_app  # noqa: E402
-from app.models import (Alumno, Asignado, Nota, Pago, Profesor, Rol, Usuario, db)  # noqa: E402
+from app.models import (Alumno, Asignado, Curso, Gestion, Inscrito, Nota, Pago, Profesor, Rol, Usuario, db)  # noqa: E402
 
 app = create_app()
 app.config["WTF_CSRF_ENABLED"] = False
@@ -92,6 +92,53 @@ if True:
     ok(b"cupos" in r.data, "capacidad del curso respetada")
     r = post(admin, "inscrito", id_alumno=1, id_curso=1, id_instrumento=1, inscrito=True, descuento=0)
     ok(b"ya est" in r.data, "inscripción duplicada rechazada")
+
+    # ---- Inscripciones: gestión activa por defecto, curso según instrumento, búsqueda de alumno
+    post(admin, "instrumento", instrumento="Guitarra", area="Cuerdas")                     # id 2
+    post(admin, "gestion", gestion=2025, plan="Plan 2025", inicio="2025-02-01", fin="2025-12-01")  # id 2, inactiva
+    def _ins_vieja():
+        db.session.add(Curso(curso=None, paralelo="B", id_gestion=2, id_grado=1, id_usuario=1))
+        db.session.flush()
+        db.session.add(Inscrito(id_alumno=2, id_curso=2, id_instrumento=1, inscrito=True, abandono=False,
+                                descuento=0, id_usuario=1))
+        db.session.commit()
+    db_(_ins_vieja)
+    r = admin.get("/inscrito/", headers=HX)
+    ok(b"Rojas" in r.data and b"Vega" not in r.data, "listado: por defecto solo la gestión activa")
+    ok(b"Vega" in admin.get("/inscrito/?id_gestion=todas", headers=HX).data, "listado: opción «todas las gestiones»")
+    ok(b"Vega" in admin.get("/inscrito/?id_gestion=2", headers=HX).data, "listado: filtro por gestión anterior")
+    ok(b"Vega" not in admin.get("/inscrito/?id_gestion=abc", headers=HX).data, "parámetro manipulado no rompe (500)")
+    page = admin.get("/inscrito/").data
+    ok(b'value="activa" selected' in page, "filtro de gestión preseleccionado en «Gestión activa»")
+    ok(admin.get("/inscrito/2/editar").status_code == 200, "se puede editar una inscripción de gestión anterior")
+    ok(b"Vega" in admin.get("/inscrito/?q=vega&id_gestion=todas", headers=HX).data, "búsqueda en listado")
+
+    r = admin.get("/inscrito/opciones/id_curso?id_instrumento=1", headers={"HX-Request": "true"})
+    ok(b"Piano I A" in r.data and b"Piano I B" not in r.data, "cursos del instrumento solo de la gestión activa")
+    r = admin.get("/inscrito/opciones/id_curso?id_instrumento=2", headers={"HX-Request": "true"})
+    ok(b"Sin opciones" in r.data, "instrumento sin cursos: aviso")
+    r = post(admin, "inscrito", id_alumno=2, id_curso=1, id_instrumento=2, inscrito=True, descuento=0)
+    ok(b"no v" in r.data, "curso de otro instrumento rechazado por el servidor")
+    r = post(admin, "inscrito", id_alumno=2, id_curso=2, id_instrumento=1, inscrito=True, descuento=0)
+    ok(b"no v" in r.data, "curso de gestión no activa rechazado por el servidor")
+    nuevo = admin.get("/inscrito/nuevo").data
+    ok(b"searchSelect" in nuevo and b"crud/opciones" in nuevo.replace(b"/inscrito/opciones", b"crud/opciones"),
+       "formulario: buscador de alumno + curso dependiente")
+
+    post(admin, "alumno", nombre="José", paterno="Muñoz", materno="Díaz", masculino=True, activo=True, ci=1234567)  # id 3
+    post(admin, "alumno", nombre="Inactivo", paterno="Muñoz", masculino=True, ci=7654321)                              # id 4
+    bus = lambda q: admin.get(f"/inscrito/buscar/id_alumno?q={q}", headers={"HX-Request": "true"}).data
+    ok(b"Rojas" in bus("rojas") and b"C.I." in bus("rojas"), "buscar alumno por apellido (muestra C.I.)")
+    ok(b"Rojas" in bus("carla%20roj"), "buscar alumno con varias palabras parciales")
+    ok("Muñoz".encode() in bus("jose%20munoz"), "buscar sin distinguir tildes ni mayúsculas")
+    ok("Muñoz".encode() in bus("MU%C3%91OZ"), "buscar con la ñ")
+    ok("José".encode() in bus("123456"), "buscar alumno por C.I.")
+    ok(b"Inactivo" not in bus("munoz"), "alumnos inactivos no aparecen")
+    ok(b"al menos 2" in bus("a"), "mínimo 2 caracteres")
+    ok(b"Sin resultados" in bus("zzzz"), "sin resultados")
+    ok(b"Rojas" in admin.get("/alumno/?q=rojas%20carla", headers=HX).data, "listado de alumnos: búsqueda multipalabra")
+    r = post(admin, "inscrito", id_alumno=4, id_curso=1, id_instrumento=1, inscrito=True, descuento=0)
+    ok(b"no v" in r.data, "alumno inactivo no puede inscribirse")
 
     # asignación masiva de profesor
     r = admin.post("/asignado/masivo", data={"id_curso": 1, "id_materia": 1, "id_profesor": 1},

@@ -4,6 +4,14 @@
   <title>{% block title %}Inicio{% endblock %} · IFALFA</title>
   {% include '_head.html' %}
   <script>
+    // Buscador en vivo de un registro (p. ej. alumno): guarda id y etiqueta elegidos
+    function searchSelect(id, label) {
+      return {
+        id: id, label: label,
+        pick(el) { this.id = el.dataset.id; this.label = el.dataset.label; this.$refs.res.innerHTML = ''; this.$refs.q.value = ''; },
+        clear() { this.id = ''; this.label = ''; }
+      };
+    }
     function app() {
       return {
         sidebar: false, modal: false, toasts: [],
