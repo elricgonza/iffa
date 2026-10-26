@@ -7,6 +7,7 @@ from flask import (Blueprint, abort, flash, redirect, render_template, request, 
 from flask_login import current_user, login_required, login_user, logout_user
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from . import config_notas
 from .crud import RESOURCES, _render_table
 from .models import Asignado, Curso, Materia, Pago, Profesor, Usuario, db
 from .security import log_accion, scope_kind
@@ -14,6 +15,7 @@ from .security import log_accion, scope_kind
 auth_bp = Blueprint("auth", __name__)
 main_bp = Blueprint("main", __name__)
 acad_bp = Blueprint("acad", __name__, url_prefix="/asignado")
+cfg_bp = Blueprint("cfgnotas", __name__, url_prefix="/config")
 
 # --------------------------------------------------------------------- login
 _intentos: dict = {}  # ip -> [marcas de tiempo] (limitador simple por proceso)
@@ -167,3 +169,29 @@ def masivo_guardar():
                                           "id_profesor": id_prof, "registros": n})
     db.session.commit()
     return _render_table(RESOURCES["asignado"], msg=f"Profesor asignado en {n} registro(s)", close=True)
+
+
+# ------------------------------------- fechas de transcripción de notas (solo Administrador)
+@cfg_bp.route("/notas", methods=["GET", "POST"])
+@login_required
+def notas():
+    if not current_user.has_role("Administrador"):
+        abort(403)
+    actual = config_notas.cargar()
+    if request.method == "POST":
+        nuevo, errores = config_notas.desde_formulario(request.form)
+        if errores:
+            return render_template("config_notas.html", cfg=nuevo, errores=errores,
+                                   periodos=config_notas.PERIODOS, estados=_estados(nuevo)), 200
+        cambios = {k: {"antes": actual[k], "despues": v} for k, v in nuevo.items() if actual[k] != v}
+        config_notas.guardar(nuevo)
+        log_accion("UPDATE", "config_notas", None, cambios or {"sin_cambios": True})
+        db.session.commit()
+        flash("Fechas de transcripción de notas guardadas.", "ok")
+        return redirect(url_for("cfgnotas.notas"))
+    return render_template("config_notas.html", cfg=actual, errores={},
+                           periodos=config_notas.PERIODOS, estados=_estados(actual))
+
+
+def _estados(cfg):
+    return {k: config_notas.estado(k, cfg) for k, _ in config_notas.PERIODOS}

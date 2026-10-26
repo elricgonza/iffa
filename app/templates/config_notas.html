@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% block title %}Fechas Transcripción Notas{% endblock %}
+{% block content %}
+<div class="mb-5">
+  <h1 class="text-xl font-bold text-brand-800">Fechas Transcripción Notas</h1>
+  <p class="text-sm text-slate-500 mt-1">
+    Defina para cada período si la transcripción de calificaciones está habilitada y entre qué fechas
+    (inicio y final, ambas inclusive). Fuera del rango, o con el período restringido, los campos de la nota
+    quedan bloqueados para profesores y transcriptores. El rol Administrador no tiene esta restricción.
+  </p>
+</div>
+
+{% if errores %}
+  <div class="mb-4 rounded-lg px-4 py-3 text-sm bg-red-50 text-red-800 border border-red-200">
+    <p class="font-semibold mb-1">No se guardaron los cambios:</p>
+    <ul class="list-disc pl-5">{% for msg in errores.values() %}<li>{{ msg }}</li>{% endfor %}</ul>
+  </div>
+{% endif %}
+
+<form method="post" class="space-y-5">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+    {% for k, label in periodos %}
+      {% set abierto, texto = estados[k] %}
+      <section class="rounded-xl bg-white border shadow-sm p-4 {{ 'border-red-300' if errores.get(k) }}"
+               x-data='{ on: {{ "true" if cfg["habilitar_" ~ k] else "false" }} }'>
+        <div class="flex items-start justify-between gap-2 mb-3">
+          <h2 class="font-semibold text-brand-800">{{ label }}</h2>
+          <span class="text-[11px] rounded-full px-2 py-0.5 border whitespace-nowrap
+                       {{ 'bg-emerald-50 border-emerald-200 text-emerald-800' if abierto else 'bg-slate-100 border-slate-200 text-slate-600' }}">{{ texto }}</span>
+        </div>
+        <label class="flex items-center gap-2 text-sm font-medium mb-3">
+          <input type="checkbox" name="habilitar_{{ k }}" x-model="on" {{ 'checked' if cfg['habilitar_' ~ k] }}
+                 class="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500">
+          Habilitar transcripción
+        </label>
+        <div class="grid grid-cols-2 gap-3" :class="on ? '' : 'opacity-60'">
+          <label class="block text-xs font-medium text-slate-600">Fecha inicio
+            <input type="date" name="transcripcion_{{ k }}_inicio" value="{{ cfg['transcripcion_' ~ k ~ '_inicio'] or '' }}"
+                   class="mt-1 w-full rounded-lg border border-slate-300 px-2 py-2 text-sm focus:ring-2 focus:ring-brand-500 outline-none">
+          </label>
+          <label class="block text-xs font-medium text-slate-600">Fecha final
+            <input type="date" name="transcripcion_{{ k }}_final" value="{{ cfg['transcripcion_' ~ k ~ '_final'] or '' }}"
+                   class="mt-1 w-full rounded-lg border border-slate-300 px-2 py-2 text-sm focus:ring-2 focus:ring-brand-500 outline-none">
+          </label>
+        </div>
+        {% if errores.get(k) %}<p class="mt-2 text-xs text-red-600">{{ errores[k] }}</p>{% endif %}
+      </section>
+    {% endfor %}
+  </div>
+  <div class="flex justify-end">
+    <button class="rounded-lg bg-brand-600 hover:bg-brand-700 text-white px-6 py-2.5 text-sm font-medium">Guardar fechas</button>
+  </div>
+</form>
+{% endblock %}

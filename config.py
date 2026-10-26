@@ -26,3 +26,6 @@ class Config:
     NUM_CUOTAS = int(os.environ.get("NUM_CUOTAS", "1"))
     NOTA_APROBACION = float(os.environ.get("NOTA_APROBACION", "51"))
     PER_PAGE = int(os.environ.get("PER_PAGE", "15"))
+    # Archivo con las fechas de habilitación de la transcripción de notas
+    CONFIG_NOTAS_PATH = os.environ.get(
+        "CONFIG_NOTAS_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "config_notas.json"))

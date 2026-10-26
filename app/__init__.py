@@ -49,11 +49,14 @@ def create_app():
 
     from . import resources  # noqa: F401  (registra los recursos)
     from .crud import RESOURCES, bp as crud_bp
-    from .views import acad_bp, auth_bp, main_bp
+    from .views import acad_bp, auth_bp, cfg_bp, main_bp
+    from . import config_notas
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
     app.register_blueprint(acad_bp)
+    app.register_blueprint(cfg_bp)
+    app.jinja_env.globals["estado_notas"] = config_notas.resumen
     app.register_blueprint(crud_bp)
 
     @app.context_processor
@@ -63,6 +66,8 @@ def create_app():
             for titulo, claves in GRUPOS_MENU:
                 items = [(RESOURCES[k].title, url_for("crud.index", key=k), k) for k in claves
                          if current_user.has_perm(RESOURCES[k].perm("ver"))]
+                if titulo == "Administración" and current_user.has_role("Administrador"):
+                    items.insert(0, ("Fechas Transcripción Notas", url_for("cfgnotas.notas"), "cfg_notas"))
                 if items:
                     grupos.append((titulo, items))
         return {"menu": grupos}

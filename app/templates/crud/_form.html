@@ -29,7 +29,8 @@
           </label>
         {% else %}
           <label for="f_{{ f.name }}" class="block text-sm font-medium text-slate-700">{{ f.label }}{% if f.required or (f.req_create and not obj) %} <span class="text-red-500">*</span>{% endif %}</label>
-          {% set cls = 'mt-1 w-full rounded-lg border px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-brand-500 outline-none ' ~ ('border-red-400' if err else 'border-slate-300') %}
+          {% set bloqueo = r.bloqueo(f, obj) %}
+          {% set cls = 'mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 outline-none ' ~ ('bg-slate-100 text-slate-400 cursor-not-allowed ' if bloqueo else 'bg-white ') ~ ('border-red-400' if err else 'border-slate-300') %}
           {% if f.type == 'search' %}
             <div x-data='searchSelect({{ values[f.name]|tojson }}, {{ r.search_label(f, values[f.name])|tojson }})'>
               <input type="hidden" name="{{ f.name }}" :value="id">
@@ -80,11 +81,13 @@
             {% set tipo = {'number': 'number', 'decimal': 'text', 'date': 'date', 'datetime': 'datetime-local',
                            'email': 'email', 'password': 'password'}.get(f.type, 'text') %}
             <input id="f_{{ f.name }}" name="{{ f.name }}" type="{{ tipo }}" value="{{ values[f.name] }}" class="{{ cls }}"
+                   {% if bloqueo %}disabled{% endif %}
                    {% if f.type == 'number' %}step="1"{% if f.min is not none %} min="{{ f.min|int }}"{% endif %}{% if f.max is not none %} max="{{ f.max|int }}"{% endif %}{% endif %}
                    {% if f.type == 'decimal' %}inputmode="decimal"{% endif %}
                    {% if f.type == 'password' %}autocomplete="new-password"{% endif %}>
           {% endif %}
-          {% if f.help and not err %}<p class="mt-1 text-xs text-slate-500">{{ f.help }}</p>{% endif %}
+          {% if bloqueo %}<p class="mt-1 text-xs text-amber-700">Bloqueado: {{ bloqueo }}</p>
+          {% elif f.help and not err %}<p class="mt-1 text-xs text-slate-500">{{ f.help }}</p>{% endif %}
           {% if err %}<p class="mt-1 text-xs text-red-600">{{ err }}</p>{% endif %}
         {% endif %}
       </div>

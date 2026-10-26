@@ -1,0 +1,14 @@
+{# Estado de los períodos de transcripción (según config_notas.json) #}
+<div class="mb-4 flex flex-wrap items-center gap-2 text-xs">
+  <span class="text-slate-500">Transcripción:</span>
+  {% for label, abierto, texto in estado_notas() %}
+    <span class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 border
+                 {{ 'bg-emerald-50 border-emerald-200 text-emerald-800' if abierto else 'bg-slate-100 border-slate-200 text-slate-600' }}"
+          title="{{ texto }}">
+      <span class="font-semibold">{{ label }}</span> · {{ texto }}
+    </span>
+  {% endfor %}
+  {% if current_user.has_role('Administrador') %}
+    <a href="{{ url_for('cfgnotas.notas') }}" class="text-brand-600 hover:underline ml-1">Configurar fechas</a>
+  {% endif %}
+</div>

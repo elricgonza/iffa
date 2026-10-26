@@ -8,6 +8,7 @@ from flask_login import current_user
 from sqlalchemy import and_, cast, false, func, inspect as sa_inspect, or_, String, true
 from sqlalchemy.orm import selectinload
 
+from . import config_notas
 from .crud import Col, Field, Filter, Resource
 from .models import (Alumno, Asignado, AuditLog, Curso, Gestion, Grado, Inscrito,
                      Instrumento, Materia, Nota, Pago, Permiso, Profesor, Rol, Usuario, db)
@@ -467,12 +468,24 @@ _nota_base = lambda: (Nota.query
                       .join(Inscrito, Asignado.id_inscrito == Inscrito.id)
                       .join(Alumno, Inscrito.id_alumno == Alumno.id)
                       .join(Materia, Asignado.id_materia == Materia.id))
-_n = lambda name: Field(name, name.replace("nota", "Nota "), "number", min=0, max=100)
+def _bloqueo_nota(periodo):
+    """Bloquea el campo fuera del rango de fechas definido en config_notas.json
+    (el Administrador no está sujeto a la restricción)."""
+    def fn(obj):
+        if current_user.has_role("Administrador"):
+            return None
+        abierto, motivo = config_notas.estado(periodo)
+        return None if abierto else motivo
+    return fn
+
+
+_n = lambda name: Field(name, name.replace("nota", "Nota "), "number", min=0, max=100,
+                        locked=_bloqueo_nota(name))
 
 Resource(
     "nota", Nota, "Calificaciones", "Calificación",
     fields=[_n("nota1"), _n("nota2"), _n("nota3"), _n("nota4"),
-            Field("segunda_t", "2.º turno", "number", min=0, max=100,
+            Field("segunda_t", "2.º turno", "number", min=0, max=100, locked=_bloqueo_nota("2t"),
                   help="Nota de segundo turno; reemplaza al promedio si éste no alcanza para aprobar."),
             Field("obs", "Observaciones")],
     columns=[Col("Alumno", "asignado.inscrito.alumno.nombre_completo"),
@@ -486,7 +499,7 @@ Resource(
     filters=[Filter("id_curso", "Curso", _opts_curso, lambda q, v: q.filter(Asignado.id_curso == int(v))),
              Filter("id_materia", "Materia", _opts_materia, lambda q, v: q.filter(Asignado.id_materia == int(v)))],
     order=lambda: [Asignado.id_curso.desc(), Materia.materia, Alumno.paterno, Alumno.nombre],
-    before_save=_before_save_nota,
+    before_save=_before_save_nota, info="crud/_info_nota.html",
 )
 
 

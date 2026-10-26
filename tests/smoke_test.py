@@ -10,6 +10,12 @@ import sys
 if os.environ.get("SMOKE_TEST_CONFIRM") != "yes":
     sys.exit("Defina SMOKE_TEST_CONFIRM=yes (usar solo en una base de pruebas).")
 
+import json
+import tempfile
+from datetime import date, timedelta
+
+# archivo de configuración de notas aislado (no toca el real)
+os.environ["CONFIG_NOTAS_PATH"] = os.path.join(tempfile.mkdtemp(), "config_notas.json")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app import create_app  # noqa: E402
 from app.models import (Alumno, Asignado, Curso, Gestion, Inscrito, Nota, Pago, Profesor, Rol, Usuario, db)  # noqa: E402
@@ -30,6 +36,20 @@ def db_(fn):
     """Ejecuta una consulta en su propio contexto (evita compartir g entre peticiones)."""
     with app.app_context():
         return fn()
+
+
+PERIODOS = ("nota1", "nota2", "nota3", "nota4", "2t")
+
+
+def cfg_post(c, **over):
+    """Guarda las fechas de transcripción (todo habilitado de ayer a +5 días, salvo lo indicado)."""
+    hoy, data = date.today(), {}
+    for k in PERIODOS:
+        data[f"habilitar_{k}"] = "on"
+        data[f"transcripcion_{k}_inicio"] = (hoy - timedelta(1)).isoformat()
+        data[f"transcripcion_{k}_final"] = (hoy + timedelta(5)).isoformat()
+    data.update(over)
+    return c.post("/config/notas", data={k: v for k, v in data.items() if v is not None})
 
 
 def post(c, key, **data):
@@ -157,6 +177,42 @@ if True:
     ok(p1.get("/usuario/").status_code == 403, "profesor sin acceso a usuarios (403)")
     ok(p1.post("/gestion/guardar", data={}).status_code == 403, "profesor no puede crear gestiones")
 
+    # ---- Fechas de transcripción de notas (config_notas.json): acceso y valores por defecto
+    nid0 = db_(lambda: Nota.query.join(Asignado).filter(Asignado.id_profesor == 1).first().id)
+    nval = lambda campo: db_(lambda: getattr(db.session.get(Nota, nid0), campo))
+    ok(p1.get("/config/notas").status_code == 403 and p2.get("/config/notas").status_code == 403,
+       "Fechas Transcripción Notas: profesores no tienen acceso (403)")
+    ok(b"Fechas Transcripci" in admin.get("/config/notas").data, "Fechas Transcripción Notas: el administrador accede")
+    ok(b"Fechas Transcripci" in admin.get("/").data and b"Fechas Transcripci" not in p1.get("/").data,
+       "la opción de menú solo aparece al administrador")
+    ruta = os.environ["CONFIG_NOTAS_PATH"]
+    claves = ({f"habilitar_{k}" for k in PERIODOS}
+              | {f"transcripcion_{k}_{lado}" for k in PERIODOS for lado in ("inicio", "final")})
+    cfg0 = json.load(open(ruta, encoding="utf-8"))
+    ok(set(cfg0) == claves and all(cfg0[f"habilitar_{k}"] is False for k in PERIODOS),
+       "config_notas.json se crea con las 15 claves y todo restringido")
+    r = p1.post("/nota/guardar", data={"id": nid0, "nota1": 60, "obs": "prueba"}, headers={"HX-Request": "true"})
+    ok(nval("nota1") is None and nval("obs") == "prueba", "restringido: la nota no cambia (otros campos sí)")
+    f = p1.get(f"/nota/{nid0}/editar").data
+    ok(b"disabled" in f and b"Bloqueado: Transcripci" in f, "formulario: campos bloqueados con el motivo")
+    ok(b"Transcripci" in p1.get("/nota/").data and b"Configurar fechas" not in p1.get("/nota/").data,
+       "listado de notas: estado de los períodos (enlace de configuración solo al administrador)")
+
+    # validaciones y guardado del archivo
+    r = cfg_post(admin, transcripcion_nota1_inicio=(date.today() + timedelta(8)).isoformat())
+    ok(b"posterior" in r.data and json.load(open(ruta, encoding="utf-8")) == cfg0, "inicio posterior al final: rechazado")
+    r = cfg_post(admin, transcripcion_nota2_final=None)
+    ok("indique la fecha".encode() in r.data and json.load(open(ruta, encoding="utf-8")) == cfg0,
+       "habilitar sin fechas: rechazado")
+    r = cfg_post(admin, transcripcion_nota3_inicio="31/02/2026")
+    ok("no v".encode() in r.data, "fecha inválida: rechazada")
+    r = cfg_post(admin)
+    cfg1 = json.load(open(ruta, encoding="utf-8"))
+    ok(r.status_code == 302 and set(cfg1) == claves and all(cfg1[f"habilitar_{k}"] is True for k in PERIODOS)
+       and cfg1["transcripcion_2t_inicio"] == (date.today() - timedelta(1)).isoformat()
+       and cfg1["transcripcion_nota4_final"] == (date.today() + timedelta(5)).isoformat(),
+       "fechas guardadas en config_notas.json (booleanos y fechas ISO)")
+
     # edición de notas y cálculo
     nid = db_(lambda: Nota.query.join(Asignado).filter(Asignado.id_profesor == 1).first().id)
     r = p1.post("/nota/guardar", data={"id": nid, "nota1": 60, "nota2": 40, "nota3": 55, "nota4": 45},
@@ -171,6 +227,32 @@ if True:
     ok(p1.get(f"/nota/{otra}/editar").status_code == 404, "profesor no puede abrir nota ajena")
     ok(p1.post("/nota/guardar", data={"id": otra, "nota1": 99}, headers={"HX-Request": "true"}).status_code == 404,
        "profesor no puede modificar nota ajena")
+
+    # ---- Restricción por período
+    def con(**over):
+        cfg_post(admin, **over)
+    getn = lambda campo: db_(lambda: getattr(db.session.get(Nota, nid), campo))
+    # reenvía los valores actuales (un campo vacío en el formulario borraría la nota) y aplica los cambios pedidos
+    actuales = lambda: {c: v for c in ("nota1", "nota2", "nota3", "nota4", "segunda_t") if (v := getn(c)) is not None}
+    solo = lambda **d: p1.post("/nota/guardar", data={"id": nid, **actuales(), **d}, headers={"HX-Request": "true"})
+    con(habilitar_nota2=None)  # Nota 2 restringida
+    solo(nota1=61, nota2=10, nota3=55, nota4=45, segunda_t=70)
+    ok(getn("nota2") == 40 and getn("nota1") == 61, "período restringido: Nota 2 intacta, Nota 1 sí cambia")
+    con(transcripcion_nota3_final=(date.today() - timedelta(1)).isoformat(),
+        transcripcion_nota3_inicio=(date.today() - timedelta(9)).isoformat())
+    solo(nota3=99)
+    ok(getn("nota3") == 55, "plazo vencido: Nota 3 intacta")
+    ok(b"Plazo vencido" in p1.get(f"/nota/{nid}/editar").data, "formulario indica «plazo vencido»")
+    con(transcripcion_nota4_inicio=(date.today() + timedelta(2)).isoformat())
+    solo(nota4=99)
+    ok(getn("nota4") == 45, "aún no habilitado: Nota 4 intacta")
+    con(habilitar_2t=None)
+    solo(segunda_t=5)
+    ok(getn("segunda_t") == 70, "2T restringido: sin cambios")
+    admin.post("/nota/guardar", data={"id": nid, "nota2": 77, "nota1": 61, "nota3": 55, "nota4": 45, "segunda_t": 70},
+               headers={"HX-Request": "true"})
+    ok(getn("nota2") == 77, "el Administrador no está sujeto a la restricción")
+    cfg_post(admin)  # deja todo habilitado
 
     # estudiante
     a1, _ = login("alu1", "Clave12345")

@@ -43,6 +43,7 @@ class Field:
     search: Optional[Callable] = None  # type="search": (texto) -> [(id, etiqueta)]
     label_fn: Optional[Callable] = None  # etiqueta de un registro (type="search")
     check: Optional[Callable] = None  # validación extra del registro elegido (type="search")
+    locked: Optional[Callable] = None  # (obj) -> motivo (str) si el campo está bloqueado para el usuario, o None
 
     @property
     def a(self):
@@ -79,7 +80,7 @@ class Resource:
                  search=None, filters=(), order=None, scope=None, can_edit=None,
                  can_delete=None, allow_create=True, allow_edit=True, allow_delete=True,
                  validate=None, before_save=None, after_save=None, before_delete=None,
-                 toolbar=None, form_size="max-w-2xl"):
+                 toolbar=None, info=None, form_size="max-w-2xl"):
         self.key, self.model, self.title, self.singular = key, model, title, singular
         self.fields, self.columns, self.filters = fields, columns, list(filters)
         self.query, self.search, self.order, self.scope = query, search, order, scope
@@ -87,6 +88,7 @@ class Resource:
         self.allow_create, self.allow_edit, self.allow_delete = allow_create, allow_edit, allow_delete
         self.validate, self.before_save, self.after_save = validate, before_save, after_save
         self.before_delete, self.toolbar, self.form_size = before_delete, toolbar, form_size
+        self.info = info  # plantilla opcional con información bajo el título del listado
         RESOURCES[key] = self
 
     # ---- permisos
@@ -163,6 +165,10 @@ class Resource:
             return f"{float(v):,.2f}"
         return str(v)
 
+    def bloqueo(self, f, obj):
+        """Motivo por el que el campo está bloqueado para el usuario actual (o None)."""
+        return f.locked(obj) if (f.locked and obj is not None) else None
+
     def search_label(self, f, raw):
         """Etiqueta del registro elegido en un campo type="search"."""
         if not raw or not str(raw).isdigit():
@@ -231,6 +237,8 @@ class Resource:
         for f in self.fields:
             if f.create_only and obj is not None:
                 continue
+            if f.locked and obj is not None and f.locked(obj):
+                continue  # campo bloqueado: se conserva el valor actual, aunque se manipule el formulario
             needed = f.required or (f.req_create and obj is None)
             try:
                 if f.type == "multiselect":

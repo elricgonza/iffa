@@ -1,0 +1,17 @@
+{
+  "habilitar_nota1": true,
+  "transcripcion_nota1_inicio": "2026-02-02",
+  "transcripcion_nota1_final": "2026-06-30",
+  "habilitar_nota2": true,
+  "transcripcion_nota2_inicio": "2026-05-01",
+  "transcripcion_nota2_final": "2026-07-30",
+  "habilitar_nota3": true,
+  "transcripcion_nota3_inicio": "2026-08-01",
+  "transcripcion_nota3_final": "2026-09-30",
+  "habilitar_nota4": true,
+  "transcripcion_nota4_inicio": "2026-10-01",
+  "transcripcion_nota4_final": "2026-11-30",
+  "habilitar_2t": true,
+  "transcripcion_2t_inicio": "2026-10-01",
+  "transcripcion_2t_final": "2026-12-31"
+}

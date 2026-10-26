@@ -84,6 +84,13 @@ recibe todos).
   a esa materia en el curso.
 * **Notas** (0–100): `nota_final` = promedio de las notas registradas; si no alcanza `NOTA_APROBACION` (51 por
   defecto) y existe nota de 2.º turno (`2t`), ésta es la `nota_aprob`. `aprobado` se calcula automáticamente.
+* **Fechas de transcripción de notas** (solo Administrador: *Administración → Fechas Transcripción Notas*): se guardan
+  en `config_notas.json` (raíz del proyecto, o la ruta de `CONFIG_NOTAS_PATH` en `.env`; se crea solo la primera vez y
+  el usuario del servicio —`www-data`— debe poder escribir en esa carpeta). Por cada período (`nota1`…`nota4` y `2t`):
+  `habilitar_X` (true/false), `transcripcion_X_inicio` y `transcripcion_X_final` (fechas `AAAA-MM-DD`, inclusive).
+  Con `habilitar_X = true` solo se puede transcribir dentro del rango; con `false` queda restringido. Los campos
+  fuera de plazo se muestran bloqueados y el servidor conserva su valor aunque se manipule el formulario. El
+  Administrador no está sujeto a la restricción. Si el archivo se daña, se restringe todo (opción segura).
 * **Pagos**: se generan solo desde la inscripción; se actualizan registrando método, fecha y referencia.
 * No se eliminan inscripciones con pagos o notas registradas, ni registros con dependencias.
 * **Auditoría**: altas, cambios, bajas, inicios/cierres de sesión (incluidos intentos fallidos) y acciones masivas.

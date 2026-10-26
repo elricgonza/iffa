@@ -13,6 +13,8 @@
   </div>
 </div>
 
+{% if r.info %}{% include r.info %}{% endif %}
+
 <form class="mb-4 grid grid-cols-1 sm:flex sm:flex-wrap gap-2"
       hx-get="{{ url_for('crud.index', key=r.key) }}" hx-target="#table-wrap" hx-swap="innerHTML"
       hx-push-url="true" hx-trigger="input delay:300ms, submit">

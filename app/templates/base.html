@@ -58,7 +58,7 @@
         <p class="px-5 pt-4 pb-1 text-[11px] uppercase tracking-wider text-slate-400">{{ titulo }}</p>
         {% for label, url, key in items %}
           <a href="{{ url }}" @click="sidebar = false"
-             class="block px-5 py-2 hover:bg-white/10 {{ 'bg-brand-600 text-white font-semibold' if request.view_args and request.view_args.get('key') == key }}">{{ label }}</a>
+             class="block px-5 py-2 hover:bg-white/10 {{ 'bg-brand-600 text-white font-semibold' if (request.view_args and request.view_args.get('key') == key) or (key == 'cfg_notas' and request.endpoint == 'cfgnotas.notas') }}">{{ label }}</a>
         {% endfor %}
       {% endfor %}
     </nav>
