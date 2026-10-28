@@ -40,6 +40,7 @@ class Field:
     maxlength: Optional[int] = None
     depends_on: Optional[str] = None  # select dependiente: nombre del campo padre
     dep_options: Optional[Callable] = None  # (valor_padre) -> [(valor, etiqueta)]
+    dep_strict: bool = True  # False: dep_options solo sugiere; se valida contra options() y la regla da el motivo
     search: Optional[Callable] = None  # type="search": (texto) -> [(id, etiqueta)]
     label_fn: Optional[Callable] = None  # etiqueta de un registro (type="search")
     check: Optional[Callable] = None  # validación extra del registro elegido (type="search")
@@ -311,7 +312,7 @@ class Resource:
                 raise ValueError("Selección no válida")
             return int(raw)
         if t == "select":
-            if f.depends_on:  # opciones según el campo padre (p. ej. cursos del instrumento)
+            if f.depends_on and f.dep_strict:  # opciones según el campo padre (p. ej. cursos del instrumento)
                 opciones = f.dep_options(form.get(f.depends_on) if form else None)
             else:
                 opciones = f.options()

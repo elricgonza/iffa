@@ -84,6 +84,16 @@ recibe todos).
   a esa materia en el curso.
 * **Notas** (0–100): `nota_final` = promedio de las notas registradas; si no alcanza `NOTA_APROBACION` (51 por
   defecto) y existe nota de 2.º turno (`2t`), ésta es la `nota_aprob`. `aprobado` se calcula automáticamente.
+* **1ro./2do. Técnico Medio** (grados llamados «1ro. Técnico Medio» y «2do. Técnico Medio» del mismo instrumento;
+  **solo el Administrador** puede inscribir/asignar en ellos). «Aprobada» = nota con `aprobado = true` en cualquier
+  inscripción previa del alumno.
+  * Inscripción a **1ro**: se asignan solo las materias de 1ro aún no aprobadas. Manualmente pueden agregarse
+    materias de 2do si existe un curso de 2do habilitado en la gestión vigente y están aprobados sus requisitos.
+  * Inscripción a **2do**: si tiene aprobadas todas las de 1ro, se asignan automáticamente las de 2do no aprobadas;
+    si no, no se asigna nada automáticamente y se permiten (manualmente) los **arrastres** de 1ro no aprobados y las
+    materias de 2do cuyos requisitos estén aprobados.
+  * Las materias de otro grado se cursan en un curso de ese grado de la gestión vigente (queda en `asignado.id_curso`).
+    El selector de materia de *Asignaciones* muestra solo las permitidas para el inscrito elegido.
 * **Fechas de transcripción de notas** (solo Administrador: *Administración → Fechas Transcripción Notas*): se guardan
   en `config_notas.json` (raíz del proyecto, o la ruta de `CONFIG_NOTAS_PATH` en `.env`; se crea solo la primera vez y
   el usuario del servicio —`www-data`— debe poder escribir en esa carpeta). Por cada período (`nota1`…`nota4` y `2t`):

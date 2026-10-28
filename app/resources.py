@@ -13,8 +13,10 @@ from .crud import Col, Field, Filter, Resource
 from .models import (Alumno, Asignado, AuditLog, Curso, Gestion, Grado, Inscrito,
                      Instrumento, Materia, Nota, Pago, Permiso, Profesor, Rol, Usuario, db)
 from .security import mi_alumno, mi_profesor, scope_kind
-from .services import (METODOS_PAGO, crear_asignado, generar_pagos_y_asignados,
-                       nota_tiene_valores, recalcular_pagos_pendientes, requisitos_pendientes)
+from .services import (METODOS_PAGO, crear_asignado, curso_para_materia,
+                       generar_pagos_y_asignados, materias_permitidas_tm, nivel_tm,
+                       nota_tiene_valores, recalcular_pagos_pendientes, requisitos_pendientes,
+                       validar_asignacion_tm)
 
 ROLES_BASE = ("Administrador", "Profesor", "Estudiante", "Consulta", "Transcriptor")
 
@@ -241,8 +243,18 @@ def _scope_inscrito(q):
     return q.filter(false())
 
 
+def _bloqueo_tm(curso):
+    """Las inscripciones/asignaciones de 1ro. y 2do. Técnico Medio solo las gestiona el Administrador."""
+    if nivel_tm(curso.grado) and not current_user.has_role("Administrador"):
+        return {"__all__": "Las inscripciones y asignaciones de «1ro./2do. Técnico Medio» "
+                           "solo puede gestionarlas el Administrador."}
+    return {}
+
+
 def _validar_inscrito(d, o):
-    err = {}
+    err = _bloqueo_tm(db.session.get(Curso, d["id_curso"]) if o is None else o.curso)
+    if err:
+        return err
     if o is None:
         if Inscrito.query.filter_by(id_alumno=d["id_alumno"], id_curso=d["id_curso"]).first():
             err["id_curso"] = "El alumno ya está inscrito en este curso"
@@ -373,6 +385,20 @@ def _scope_asignado(q):
     return q.filter(false())
 
 
+def _materias_de_inscrito(id_inscrito):
+    """Materias asignables según la inscripción: en Técnico Medio, solo las que cumplen las reglas
+    (arrastres, requisitos aprobados, curso habilitado); en otros grados, todas (como antes)."""
+    try:
+        ins = db.session.get(Inscrito, int(id_inscrito))
+    except (TypeError, ValueError):
+        return []
+    if ins is None:
+        return []
+    if nivel_tm(ins.curso.grado):
+        return materias_permitidas_tm(ins)
+    return _opts_materia()
+
+
 def _validar_asignado(d, o):
     if o is not None:
         return {}
@@ -380,6 +406,12 @@ def _validar_asignado(d, o):
     mat = db.session.get(Materia, d["id_materia"])
     if Asignado.query.filter_by(id_inscrito=ins.id, id_materia=mat.id).first():
         return {"id_materia": "La materia ya está asignada a este inscrito"}
+    if nivel_tm(ins.curso.grado):
+        err = _bloqueo_tm(ins.curso)
+        if err:
+            return err
+        msg = validar_asignacion_tm(ins, mat)
+        return {"id_materia": msg} if msg else {}
     if mat.id_grado != ins.curso.id_grado and not ins.otras_materias:
         return {"id_materia": "Es de otro grado: habilite «materias de otros grados» en la inscripción"}
     pend = requisitos_pendientes(ins.id_alumno, mat)
@@ -390,7 +422,10 @@ def _validar_asignado(d, o):
 
 def _before_save_asignado(obj, d):
     if obj.id_curso is None:
-        obj.id_curso = db.session.get(Inscrito, obj.id_inscrito).id_curso
+        ins = db.session.get(Inscrito, obj.id_inscrito)
+        mat = db.session.get(Materia, obj.id_materia)
+        # En Técnico Medio la materia de otro grado se cursa en un curso de ese grado (gestión vigente)
+        obj.id_curso = curso_para_materia(ins, mat) if nivel_tm(ins.curso.grado) else ins.id_curso
 
 
 def _after_save_asignado(obj, d, nuevo):
@@ -422,7 +457,9 @@ Resource(
     fields=[
         Field("id_inscrito", "Inscrito", "select", required=True, create_only=True, options=_opts_inscrito),
         Field("id_materia", "Materia", "select", required=True, create_only=True, options=_opts_materia,
-              help="Por defecto las del grado; otras materias solo si la inscripción lo permite."),
+              depends_on="id_inscrito", dep_options=_materias_de_inscrito, dep_strict=False,
+              help="1ro/2do Técnico Medio: solo las permitidas (arrastres, 2do con requisitos aprobados). "
+                   "Otros grados: las del grado, u otras si la inscripción lo permite."),
         Field("id_profesor", "Profesor", "select",
               options=opts(Profesor, [Profesor.paterno, Profesor.nombre], where=Profesor.activo.is_(True))),
     ],
