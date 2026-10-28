@@ -1,3 +1,7 @@
+{# Enlaza un select con el primer select que depende de él (se recarga al cambiar) #}
+{% macro hx_hijo(r, hijos) %}{% if hijos %}hx-get="{{ url_for('crud.opciones', key=r.key, fname=hijos[0].name) }}"
+  hx-target="#f_{{ hijos[0].name }}" hx-swap="innerHTML" hx-trigger="change"
+  {% if hijos[0].dep_include %}hx-include="{% for n in hijos[0].dep_include %}#f_{{ n }}{% if not loop.last %}, {% endif %}{% endfor %}"{% endif %}{% endif %}{% endmacro %}
 <form hx-post="{{ url_for('crud.guardar', key=r.key) }}" hx-target="#modal-body" hx-swap="innerHTML" class="p-5">
   <input type="hidden" name="id" value="{{ obj.id if obj else '' }}">
   <div class="flex items-start justify-between mb-4">
@@ -49,18 +53,18 @@
             </div>
           {% elif f.type == 'select' and f.depends_on %}
             {% set padre = values.get(f.depends_on) %}
-            {% set ops = f.dep_options(padre) if padre else [] %}
-            <select id="f_{{ f.name }}" name="{{ f.name }}" class="{{ cls }}">
+            {% set ops = r.dep_ops(f, values) %}
+            {% set sel = values[f.name] or (ops[0][0]|string if (f.auto_unico and ops|length == 1) else '') %}
+            {% set hijos = r.fields|selectattr('depends_on', 'equalto', f.name)|list %}
+            <select id="f_{{ f.name }}" name="{{ f.name }}" class="{{ cls }}" {{ hx_hijo(r, hijos) }}>
               <option value="">{{ '— Seleccione primero el campo anterior —' if not padre else ('— Seleccione —' if ops else '— Sin opciones disponibles —') }}</option>
               {% for v, l in ops %}
-                <option value="{{ v }}" {{ 'selected' if v|string == values[f.name] }}>{{ l }}</option>
+                <option value="{{ v }}" {{ 'selected' if v|string == sel }}>{{ l }}</option>
               {% endfor %}
             </select>
           {% elif f.type == 'select' %}
             {% set hijos = r.fields|selectattr('depends_on', 'equalto', f.name)|list %}
-            <select id="f_{{ f.name }}" name="{{ f.name }}" class="{{ cls }}"
-                    {% if hijos %}hx-get="{{ url_for('crud.opciones', key=r.key, fname=hijos[0].name) }}"
-                    hx-target="#f_{{ hijos[0].name }}" hx-swap="innerHTML" hx-trigger="change"{% endif %}>
+            <select id="f_{{ f.name }}" name="{{ f.name }}" class="{{ cls }}" {{ hx_hijo(r, hijos) }}>
               <option value="">— Seleccione —</option>
               {% for v, l in f.options() %}
                 <option value="{{ v }}" {{ 'selected' if v|string == values[f.name] }}>{{ l }}</option>

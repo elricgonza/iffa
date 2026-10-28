@@ -92,6 +92,11 @@ recibe todos).
   * Inscripción a **2do**: si tiene aprobadas todas las de 1ro, se asignan automáticamente las de 2do no aprobadas;
     si no, no se asigna nada automáticamente y se permiten (manualmente) los **arrastres** de 1ro no aprobados y las
     materias de 2do cuyos requisitos estén aprobados.
+  * **Asignaciones → «+ Nuevo»**: el combo *Inscrito* lista solo a los inscritos (confirmados y sin abandono) de la gestión
+    activa. Luego se elige el **curso** y después la **materia**: en Técnico Medio el curso puede ser el propio o el de
+    otro grado con materias pendientes (p. ej. un alumno de 2do. elige entre «1ro. Técnico Medio A», «B», … para un
+    arrastre); si hay un único curso candidato se preselecciona, y la lista de materias muestra solo las pendientes
+    o permitidas de ese curso.
   * Las materias de otro grado se cursan en un curso de ese grado de la gestión vigente (queda en `asignado.id_curso`).
     El selector de materia de *Asignaciones* muestra solo las permitidas para el inscrito elegido.
 * **Fechas de transcripción de notas** (solo Administrador: *Administración → Fechas Transcripción Notas*): se guardan

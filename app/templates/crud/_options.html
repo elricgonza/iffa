@@ -1,2 +1,8 @@
 <option value="">{{ vacio }}</option>
 {% for v, l in opciones %}<option value="{{ v }}" {{ 'selected' if v|string == actual|string }}>{{ l }}</option>{% endfor %}
+{% for o in oob or [] %}
+<select id="f_{{ o.name }}" hx-swap-oob="innerHTML">
+  <option value="">{{ o.vacio }}</option>
+  {% for v, l in o.opciones %}<option value="{{ v }}" {{ 'selected' if v|string == o.actual|string }}>{{ l }}</option>{% endfor %}
+</select>
+{% endfor %}

@@ -11,6 +11,7 @@ if os.environ.get("SMOKE_TEST_CONFIRM") != "yes":
     sys.exit("Defina SMOKE_TEST_CONFIRM=yes (usar solo en una base de pruebas).")
 
 import json
+import re
 import tempfile
 from datetime import date, timedelta
 
@@ -18,7 +19,8 @@ from datetime import date, timedelta
 os.environ["CONFIG_NOTAS_PATH"] = os.path.join(tempfile.mkdtemp(), "config_notas.json")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app import create_app  # noqa: E402
-from app.models import (Alumno, Asignado, Curso, Gestion, Inscrito, Nota, Pago, Profesor, Rol, Usuario, db)  # noqa: E402
+from app.models import (Alumno, Asignado, Curso, Gestion, Grado, Inscrito, Instrumento, Materia, Nota, Pago,  # noqa: E402
+                        Profesor, Rol, Usuario, db)
 
 app = create_app()
 app.config["WTF_CSRF_ENABLED"] = False
@@ -260,6 +262,132 @@ if True:
     ok(b"Rojas" in r.data and b"225.00" in r.data, "estudiante ve sus pagos")
     ok(b"Vega" not in a1.get("/alumno/", headers=HX).data, "estudiante no ve otros alumnos")
     ok(a1.get(f"/nota/{nid}/editar").status_code == 403, "estudiante no edita notas")
+
+    # ---- 1ro./2do. Técnico Medio: asignación automática, arrastres, requisitos y solo Administrador
+    HXH = {"HX-Request": "true"}
+    ID = lambda model, **kw: db_(lambda: model.query.filter_by(**kw).first().id)
+    post(admin, "instrumento", instrumento="Violín", area="Cuerdas")
+    iv = ID(Instrumento, instrumento="Violín")
+    for nom in ("1ro. Técnico Medio", "2do. Técnico Medio"):
+        post(admin, "grado", id_instrumento=iv, nivel="Técnico Medio", grado=nom)
+    g1, g2 = ID(Grado, grado="1ro. Técnico Medio"), ID(Grado, grado="2do. Técnico Medio")
+    for nom, g in (("A1", g1), ("A2", g1), ("B1", g2), ("B2", g2), ("B3", g2)):
+        post(admin, "materia", id_grado=g, materia=nom, sigla=nom)
+    M = {n: ID(Materia, materia=n) for n in ("A1", "A2", "B1", "B2", "B3")}
+    for nom, req in (("B1", "A1"), ("B2", "A2")):  # B3 sin requisitos
+        admin.post("/materia/guardar", data={"id": M[nom], "id_grado": g2, "materia": nom, "sigla": nom,
+                                              "requisitos": [M[req]]}, headers=HXH)
+    for g, par in ((g1, "A"), (g1, "B"), (g2, "A")):
+        post(admin, "curso", id_gestion=1, id_grado=g, paralelo=par)
+    C1 = db_(lambda: Curso.query.filter_by(id_grado=g1, paralelo="A").first().id)
+    C1b = db_(lambda: Curso.query.filter_by(id_grado=g1, paralelo="B").first().id)
+    C2 = db_(lambda: Curso.query.filter_by(id_grado=g2).first().id)
+    for nom in ("Xavier", "Yara", "Zoe"):
+        post(admin, "alumno", nombre=nom, paterno="Tm", masculino=True, activo=True)
+    X, Y, Z = (ID(Alumno, nombre=n) for n in ("Xavier", "Yara", "Zoe"))
+
+    def inscribir(cli, alu, curso):
+        return post(cli, "inscrito", id_alumno=alu, id_curso=curso, id_instrumento=iv, inscrito=True, descuento=0)
+
+    def ins_de(alu, curso):
+        return ID(Inscrito, id_alumno=alu, id_curso=curso)
+
+    def asigs(ins):
+        return db_(lambda: {(a.materia.materia, a.id_curso) for a in Asignado.query.filter_by(id_inscrito=ins)})
+
+    def aprobar(alu, mat):
+        nid_ = db_(lambda: Nota.query.join(Asignado).join(Inscrito).filter(
+            Inscrito.id_alumno == alu, Asignado.id_materia == M[mat]).first().id)
+        admin.post("/nota/guardar", data={"id": nid_, "nota1": 80, "nota2": 80, "nota3": 80, "nota4": 80}, headers=HXH)
+
+    def cursos_de(ins):
+        """Cursos ofrecidos al elegir el inscrito (y texto completo de la respuesta HTMX)."""
+        t = admin.get(f"/asignado/opciones/id_curso?id_inscrito={ins}", headers=HXH).get_data(as_text=True)
+        cab = t.split("<select", 1)[0]  # opciones propias del select de curso (antes de los OOB)
+        return set(int(v) for v in re.findall(r'<option value="(\d+)"', cab)), t
+
+    def permitidas(ins, curso):
+        """Materias ofrecidas para el inscrito en el curso elegido."""
+        t = admin.get(f"/asignado/opciones/id_materia?id_curso={curso}&id_inscrito={ins}", headers=HXH).get_data(as_text=True)
+        return {n for n in M if f">{n} (" in t}, t
+
+    def asignar(cli, ins, mat, curso=None):
+        extra = {"id_curso": curso} if curso else {}
+        return post(cli, "asignado", id_inscrito=ins, id_materia=M[mat], **extra)
+
+    # 1ro: se asignan solo las materias de 1ro no aprobadas
+    inscribir(admin, X, C1)
+    iX = ins_de(X, C1)
+    ok(asigs(iX) == {("A1", C1), ("A2", C1)}, "1ro T.M.: se asignan las materias de 1ro")
+    # solo el Administrador
+    post(admin, "usuario", usuario="trans1", email="t@x.com", password="Clave12345", activo=True,
+         roles=db_(lambda: Rol.query.filter_by(rol="Transcriptor").first().id))
+    tr, _ = login("trans1", "Clave12345")
+    ok(tr.get("/inscrito/", headers=HX).status_code == 200, "el Transcriptor sigue usando Inscripciones")
+    r = inscribir(tr, Y, C1)
+    ok(b"solo puede gestionarlas el Administrador" in r.data and db_(lambda: Inscrito.query.filter_by(id_alumno=Y).count()) == 0,
+       "inscripción en Técnico Medio: solo Administrador")
+    r = asignar(tr, iX, "B3")
+    ok(b"solo puede gestionarlas el Administrador" in r.data, "asignación en Técnico Medio: solo Administrador")
+    # 1ro: materias de 2do con curso habilitado y requisitos aprobados
+    cur, txt = cursos_de(iX)
+    ok(cur == {C2} and f'value="{C2}" selected' in txt, "1ro: único curso candidato (2do) se preselecciona")
+    ok('hx-swap-oob="innerHTML"' in txt and ">B3 (" in txt and ">B1 (" not in txt and ">B2 (" not in txt,
+       "1ro: la cascada ofrece solo B3 (B1/B2 requieren A1/A2)")
+    ok(permitidas(iX, C2)[0] == {"B3"}, "1ro: materias del curso de 2do permitidas = {B3}")
+    ok(b"Requisitos sin aprobar: A1" in asignar(admin, iX, "B1").data, "2do con requisito sin aprobar: rechazado")
+    db_(lambda: (db.session.query(Curso).filter_by(id=C2).update({"id_gestion": 2}), db.session.commit()))
+    ok(b"No existe un curso" in asignar(admin, iX, "B3").data and cursos_de(iX)[0] == set()
+       and "Sin opciones" in cursos_de(iX)[1], "sin curso de 2do en la gestión vigente: rechazado")
+    db_(lambda: (db.session.query(Curso).filter_by(id=C2).update({"id_gestion": 1}), db.session.commit()))
+    asignar(admin, iX, "B3")
+    ok(("B3", C2) in asigs(iX), "B3 asignada y cursada en el curso de 2do")
+    aprobar(X, "A1")
+    ok("B1" in permitidas(iX, C2)[0], "aprobado el requisito A1, B1 queda permitida")
+    asignar(admin, iX, "B1")
+    ok(("B1", C2) in asigs(iX), "B1 asignada en el curso de 2do")
+    # nueva inscripción a 1ro: solo lo no aprobado
+    inscribir(admin, X, C1b)
+    ok(asigs(ins_de(X, C1b)) == {("A2", C1b)}, "1ro: A1 ya aprobada no se vuelve a asignar")
+
+    # 2do con 1ro completo: asignación automática de 2do
+    inscribir(admin, Y, C1)
+    aprobar(Y, "A1"); aprobar(Y, "A2")
+    inscribir(admin, Y, C2)
+    ok(asigs(ins_de(Y, C2)) == {("B1", C2), ("B2", C2), ("B3", C2)}, "2do con 1ro aprobado: se asignan todas las de 2do")
+
+    # 2do con arrastre: no se asigna nada automáticamente; se permite arrastre y 2do con requisitos
+    inscribir(admin, Z, C1)
+    aprobar(Z, "A1")
+    inscribir(admin, Z, C2)
+    iZ = ins_de(Z, C2)
+    ok(asigs(iZ) == set(), "2do con arrastre: sin asignación automática")
+    cur, _t = cursos_de(iZ)
+    ok(cur == {C2, C1, C1b}, "2do con arrastre: puede elegir su curso o cualquiera de los cursos de 1ro")
+    pa, ta = permitidas(iZ, C1)
+    ok(pa == {"A2"} and "arrastre" in ta, "curso de 1ro: solo el arrastre pendiente A2 (A1 ya aprobada)")
+    ok(permitidas(iZ, C1b)[0] == {"A2"}, "el otro curso de 1ro ofrece el mismo arrastre")
+    ok(permitidas(iZ, C2)[0] == {"B1", "B3"}, "curso de 2do: B1 y B3; no B2 (requiere A2)")
+    ok(b"ya aprob" in asignar(admin, iZ, "A1", C1).data, "no se asigna una materia ya aprobada")
+    ok(b"Requisitos sin aprobar: A2" in asignar(admin, iZ, "B2", C2).data, "B2 requiere A2 (arrastre pendiente)")
+    ok(b"seleccione el curso" in asignar(admin, iZ, "A2").data, "varios cursos de 1ro: obliga a elegir el curso")
+    ok(b"no corresponde al grado" in asignar(admin, iZ, "A2", C2).data, "curso que no es del grado de la materia: rechazado")
+    asignar(admin, iZ, "A2", C1b); asignar(admin, iZ, "B1")
+    ok(asigs(iZ) == {("A2", C1b), ("B1", C2)}, "arrastre cursado en el curso de 1ro elegido (paralelo B); B1 en el de 2do")
+
+    # ---- Asignaciones: «+ Nuevo» solo muestra inscritos de la gestión activa; curso en grados no TM
+    nuevo = admin.get("/asignado/nuevo").get_data(as_text=True)
+    ok("Rojas" in nuevo and "Tm Xavier" in nuevo, "«+ Nuevo»: aparecen los inscritos de la gestión activa")
+    ok("Vega" not in nuevo, "«+ Nuevo»: no aparecen inscritos de gestiones no activas")
+    ok('hx-include="#f_id_inscrito"' in nuevo and 'id="f_id_curso"' in nuevo and 'id="f_id_materia"' in nuevo,
+       "formulario: inscrito → curso → materia")
+    iv2 = db_(lambda: Inscrito.query.filter_by(id_alumno=2, id_curso=2).first().id)  # inscrito de gestión no activa
+    r = post(admin, "asignado", id_inscrito=iv2, id_materia=M["A1"])
+    ok(b"no v" in r.data, "inscrito de gestión no activa: rechazado por el servidor")
+    cur, txt = cursos_de(1)  # inscrito de Piano I (no Técnico Medio)
+    ok(cur == {1} and 'value="1" selected' in txt and "Lenguaje" in txt, "grado común: curso único preseleccionado y materias del grado")
+    r = post(admin, "asignado", id_inscrito=1, id_materia=1, id_curso=C2)
+    ok(b"ya est" in r.data or b"curso de la inscripci" in r.data, "grado común: no se puede elegir otro curso")
 
     # integridad
     r = admin.post("/inscrito/1/eliminar", headers={"HX-Request": "true"})

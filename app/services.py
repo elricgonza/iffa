@@ -125,27 +125,55 @@ def validar_asignacion_tm(ins, mat, ctx=None):
     return f"Solo se pueden asignar materias de «{GRADO_1RO}» y «{GRADO_2DO}» del mismo instrumento"
 
 
-def materias_permitidas_tm(ins):
-    """[(id, etiqueta)] de las materias que se pueden asignar ahora a la inscripción."""
-    ctx = contexto_tm(ins)
+def permitidas_tm(ins, ctx=None):
+    """[(Materia, es_arrastre)] que se pueden asignar ahora a la inscripción."""
+    ctx = ctx or contexto_tm(ins)
     ya = {m for (m,) in db.session.query(Asignado.id_materia).filter_by(id_inscrito=ins.id)}
     salida = []
     for m in ctx["mats1"] + ctx["mats2"]:
         if m.id in ya or validar_asignacion_tm(ins, m, ctx):
             continue
-        arrastre = " · arrastre" if (ctx["nivel"] == "2do" and m.id_grado in ctx["g1"]) else ""
-        salida.append((m.id, f"{m}{arrastre}"))
+        salida.append((m, ctx["nivel"] == "2do" and m.id_grado in ctx["g1"]))
     return salida
 
 
-def curso_para_materia(ins, mat):
-    """Curso donde se cursará la materia: el de la inscripción si es de su grado; si es de otro
-    grado, un curso de ese grado en la gestión vigente (se prefiere el mismo paralelo)."""
+def materias_permitidas_tm(ins):
+    """[(id, etiqueta)] de las materias que se pueden asignar ahora a la inscripción."""
+    return [(m.id, f"{m}{' · arrastre' if arr else ''}") for m, arr in permitidas_tm(ins)]
+
+
+def cursos_activos_de_grado(id_grado):
+    """Cursos del grado en la(s) gestión(es) activa(s), ordenados por paralelo."""
+    return (Curso.query.join(Gestion, Curso.id_gestion == Gestion.id)
+            .filter(Gestion.activo.is_(True), Curso.id_grado == id_grado)
+            .order_by(Curso.paralelo, Curso.id).all())
+
+
+def cursos_candidatos(ins, mat):
+    """Cursos donde puede cursarse la materia: el de la inscripción si es de su grado;
+    si es de otro grado, los cursos de ese grado en la gestión vigente."""
     if mat.id_grado == ins.curso.id_grado:
-        return ins.id_curso
-    cursos = (Curso.query.join(Gestion, Curso.id_gestion == Gestion.id)
-              .filter(Gestion.activo.is_(True), Curso.id_grado == mat.id_grado)
-              .order_by(Curso.paralelo, Curso.id).all())
+        return [ins.curso]
+    return cursos_activos_de_grado(mat.id_grado)
+
+
+def cursos_para_inscripcion(ins):
+    """Cursos entre los que puede elegir el administrador al asignar materias a la inscripción.
+    Técnico Medio: el propio (si aún tiene materias asignables) y los de los otros grados con
+    materias pendientes (arrastres / 2do). Otros grados: solo el de la inscripción."""
+    if not nivel_tm(ins.curso.grado):
+        return [ins.curso]
+    grados = {m.id_grado for m, _ in permitidas_tm(ins)}
+    cursos = [ins.curso] if ins.curso.id_grado in grados else []
+    for g in sorted(grados - {ins.curso.id_grado}):
+        cursos += cursos_activos_de_grado(g)
+    return cursos
+
+
+def curso_para_materia(ins, mat):
+    """Curso por defecto de la materia: el de la inscripción si es de su grado; si no, el único
+    curso del grado en la gestión vigente (si hay varios, se prefiere el mismo paralelo)."""
+    cursos = cursos_candidatos(ins, mat)
     if not cursos:
         return None
     return next((c.id for c in cursos if c.paralelo == ins.curso.paralelo), cursos[0].id)

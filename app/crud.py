@@ -41,6 +41,8 @@ class Field:
     depends_on: Optional[str] = None  # select dependiente: nombre del campo padre
     dep_options: Optional[Callable] = None  # (valor_padre) -> [(valor, etiqueta)]
     dep_strict: bool = True  # False: dep_options solo sugiere; se valida contra options() y la regla da el motivo
+    dep_include: tuple = ()  # otros campos cuyo valor necesita dep_options (se envían con la petición)
+    auto_unico: bool = False  # si dep_options devuelve una sola opción, se preselecciona
     search: Optional[Callable] = None  # type="search": (texto) -> [(id, etiqueta)]
     label_fn: Optional[Callable] = None  # etiqueta de un registro (type="search")
     check: Optional[Callable] = None  # validación extra del registro elegido (type="search")
@@ -49,6 +51,10 @@ class Field:
     @property
     def a(self):
         return self.attr or self.name
+
+    def opciones_dep(self, padre, params=None):
+        """Opciones de un select dependiente: dep_options(valor_padre, valores_de_otros_campos)."""
+        return self.dep_options(padre, params or {})
 
 
 @dataclass
@@ -165,6 +171,11 @@ class Resource:
         if col.kind == "money":
             return f"{float(v):,.2f}"
         return str(v)
+
+    def dep_ops(self, f, values):
+        """Opciones iniciales de un select dependiente según los valores actuales del formulario."""
+        padre = values.get(f.depends_on)
+        return f.opciones_dep(padre, values) if padre else []
 
     def bloqueo(self, f, obj):
         """Motivo por el que el campo está bloqueado para el usuario actual (o None)."""
@@ -313,7 +324,7 @@ class Resource:
             return int(raw)
         if t == "select":
             if f.depends_on and f.dep_strict:  # opciones según el campo padre (p. ej. cursos del instrumento)
-                opciones = f.dep_options(form.get(f.depends_on) if form else None)
+                opciones = f.opciones_dep(form.get(f.depends_on) if form else None, form)
             else:
                 opciones = f.options()
             validos = {str(v) for v, _ in opciones}
@@ -392,18 +403,38 @@ def _necesita_form(r):
         abort(403)
 
 
+VACIO_DEP = "— Seleccione primero el campo anterior —"
+
+
+def _oob_hijos(r, f, valor, params):
+    """Selects descendientes de f que deben actualizarse (hx-swap-oob) cuando f cambia."""
+    salida = []
+    for h in [x for x in r.fields if x.depends_on == f.name]:
+        p = dict(params)
+        p[f.name] = valor or ""
+        ops = h.opciones_dep(valor, p) if valor else []
+        unico = ops[0][0] if (h.auto_unico and len(ops) == 1) else ""
+        vacio = VACIO_DEP if not valor else ("— Seleccione —" if ops else "— Sin opciones disponibles —")
+        salida.append({"name": h.name, "opciones": ops, "vacio": vacio, "actual": unico})
+        salida += _oob_hijos(r, h, unico or None, p)
+    return salida
+
+
 @bp.route("/<key>/opciones/<fname>")
 @login_required
 def opciones(key, fname):
-    """Opciones de un select dependiente (p. ej. cursos según el instrumento elegido)."""
+    """Opciones de un select dependiente (p. ej. cursos según el instrumento elegido).
+    También devuelve (hx-swap-oob) los selects que dependen de éste, ya reiniciados o actualizados."""
     r = _res(key)
     _necesita_form(r)
     f = next((x for x in r.fields if x.name == fname and x.depends_on), None) or abort(404)
-    padre = request.args.get(f.depends_on)
-    ops = f.dep_options(padre) if padre else []
-    vacio = ("— Seleccione primero el campo anterior —" if not padre
-             else "— Seleccione —" if ops else "— Sin opciones disponibles —")
-    return render_template("crud/_options.html", opciones=ops, vacio=vacio, actual="")
+    params = request.args.to_dict()
+    padre = params.get(f.depends_on)
+    ops = f.opciones_dep(padre, params) if padre else []
+    actual = ops[0][0] if (f.auto_unico and len(ops) == 1) else ""
+    vacio = VACIO_DEP if not padre else ("— Seleccione —" if ops else "— Sin opciones disponibles —")
+    return render_template("crud/_options.html", opciones=ops, vacio=vacio, actual=actual,
+                           oob=_oob_hijos(r, f, actual or None, params))
 
 
 @bp.route("/<key>/buscar/<fname>")

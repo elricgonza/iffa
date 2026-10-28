@@ -5,7 +5,7 @@ from datetime import datetime
 
 from flask import current_app
 from flask_login import current_user
-from sqlalchemy import and_, cast, false, func, inspect as sa_inspect, or_, String, true
+from sqlalchemy import and_, cast, false, func, inspect as sa_inspect, or_, select, String, true
 from sqlalchemy.orm import selectinload
 
 from . import config_notas
@@ -13,8 +13,8 @@ from .crud import Col, Field, Filter, Resource
 from .models import (Alumno, Asignado, AuditLog, Curso, Gestion, Grado, Inscrito,
                      Instrumento, Materia, Nota, Pago, Permiso, Profesor, Rol, Usuario, db)
 from .security import mi_alumno, mi_profesor, scope_kind
-from .services import (METODOS_PAGO, crear_asignado, curso_para_materia,
-                       generar_pagos_y_asignados, materias_permitidas_tm, nivel_tm,
+from .services import (METODOS_PAGO, crear_asignado, curso_para_materia, cursos_candidatos,
+                       cursos_para_inscripcion, generar_pagos_y_asignados, nivel_tm, permitidas_tm,
                        nota_tiene_valores, recalcular_pagos_pendientes, requisitos_pendientes,
                        validar_asignacion_tm)
 
@@ -293,7 +293,7 @@ def _before_delete_inscrito(ins):
         db.session.delete(p)
 
 
-def cursos_de_instrumento(id_instrumento):
+def cursos_de_instrumento(id_instrumento, params=None):
     """Cursos del instrumento indicado (vía su grado) en la(s) gestión(es) activa(s)."""
     try:
         iid = int(id_instrumento)
@@ -333,7 +333,15 @@ _ins_base = lambda: (Inscrito.query.join(Alumno, Inscrito.id_alumno == Alumno.id
                      .join(Curso, Inscrito.id_curso == Curso.id))
 _eager_ins = [selectinload(Inscrito.alumno), selectinload(Inscrito.curso).selectinload(Curso.gestion),
               selectinload(Inscrito.curso).selectinload(Curso.grado)]
-_opts_inscrito = opts(Inscrito, eager=_eager_ins, where=Inscrito.inscrito.is_(True))
+_CURSOS_ACTIVOS = select(Curso.id).join(Gestion, Curso.id_gestion == Gestion.id).where(Gestion.activo.is_(True))
+
+
+def _opts_inscrito():
+    """Inscritos de la gestión académica activa (confirmados y que no abandonaron), por orden alfabético."""
+    q = (Inscrito.query.options(*_eager_ins)
+         .filter(Inscrito.inscrito.is_(True), Inscrito.abandono.is_(False),
+                 Inscrito.id_curso.in_(_CURSOS_ACTIVOS)))
+    return sorted(((i.id, str(i)) for i in q), key=lambda t: t[1].lower())
 
 Resource(
     "inscrito", Inscrito, "Inscripciones", "Inscripción",
@@ -385,17 +393,33 @@ def _scope_asignado(q):
     return q.filter(false())
 
 
-def _materias_de_inscrito(id_inscrito):
-    """Materias asignables según la inscripción: en Técnico Medio, solo las que cumplen las reglas
-    (arrastres, requisitos aprobados, curso habilitado); en otros grados, todas (como antes)."""
+def _entero(valor):
     try:
-        ins = db.session.get(Inscrito, int(id_inscrito))
+        return int(valor)
     except (TypeError, ValueError):
-        return []
+        return None
+
+
+def _cursos_de_inscrito(id_inscrito, params=None):
+    """Cursos entre los que se puede elegir al asignar una materia al inscrito.
+    Técnico Medio: el propio y los de otros grados con materias pendientes (p. ej. arrastres de 1ro.);
+    otros grados: solo el de la inscripción."""
+    ins = db.session.get(Inscrito, _entero(id_inscrito) or 0)
     if ins is None:
         return []
+    return [(c.id, str(c)) for c in cursos_para_inscripcion(ins)]
+
+
+def _materias_de_inscrito(id_curso, params=None):
+    """Materias asignables al inscrito en el curso elegido. Técnico Medio: solo las que cumplen las
+    reglas (arrastres pendientes, requisitos aprobados) y son del grado de ese curso; otros grados: todas."""
+    ins = db.session.get(Inscrito, _entero((params or {}).get("id_inscrito")) or 0)
+    curso = db.session.get(Curso, _entero(id_curso) or 0)
+    if ins is None or curso is None:
+        return []
     if nivel_tm(ins.curso.grado):
-        return materias_permitidas_tm(ins)
+        return [(m.id, f"{m}{' · arrastre' if arr else ''}")
+                for m, arr in permitidas_tm(ins) if m.id_grado == curso.id_grado]
     return _opts_materia()
 
 
@@ -404,6 +428,7 @@ def _validar_asignado(d, o):
         return {}
     ins = db.session.get(Inscrito, d["id_inscrito"])
     mat = db.session.get(Materia, d["id_materia"])
+    id_curso = d.get("id_curso")
     if Asignado.query.filter_by(id_inscrito=ins.id, id_materia=mat.id).first():
         return {"id_materia": "La materia ya está asignada a este inscrito"}
     if nivel_tm(ins.curso.grado):
@@ -411,7 +436,16 @@ def _validar_asignado(d, o):
         if err:
             return err
         msg = validar_asignacion_tm(ins, mat)
-        return {"id_materia": msg} if msg else {}
+        if msg:
+            return {"id_materia": msg}
+        ids = {c.id for c in cursos_candidatos(ins, mat)}
+        if id_curso and id_curso not in ids:
+            return {"id_curso": "El curso no corresponde al grado de la materia"}
+        if not id_curso and len(ids) > 1:
+            return {"id_curso": "Existen varios cursos de ese grado: seleccione el curso"}
+        return {}
+    if id_curso and id_curso != ins.id_curso:
+        return {"id_curso": "En este grado la materia se cursa en el curso de la inscripción"}
     if mat.id_grado != ins.curso.id_grado and not ins.otras_materias:
         return {"id_materia": "Es de otro grado: habilite «materias de otros grados» en la inscripción"}
     pend = requisitos_pendientes(ins.id_alumno, mat)
@@ -421,10 +455,9 @@ def _validar_asignado(d, o):
 
 
 def _before_save_asignado(obj, d):
-    if obj.id_curso is None:
+    if obj.id_curso is None:  # sin curso elegido: el de la inscripción o el único curso del grado de la materia
         ins = db.session.get(Inscrito, obj.id_inscrito)
         mat = db.session.get(Materia, obj.id_materia)
-        # En Técnico Medio la materia de otro grado se cursa en un curso de ese grado (gestión vigente)
         obj.id_curso = curso_para_materia(ins, mat) if nivel_tm(ins.curso.grado) else ins.id_curso
 
 
@@ -456,9 +489,14 @@ Resource(
     "asignado", Asignado, "Asignaciones (profesor · materia · alumno · curso)", "Asignación",
     fields=[
         Field("id_inscrito", "Inscrito", "select", required=True, create_only=True, options=_opts_inscrito),
+        Field("id_curso", "Curso", "select", create_only=True, options=_opts_curso,
+              depends_on="id_inscrito", dep_options=_cursos_de_inscrito, dep_strict=False, auto_unico=True,
+              help="Se preselecciona si hay un único curso; en Técnico Medio, si existen varios cursos del grado "
+                   "de la materia (p. ej. arrastres de 1ro.) elija el curso."),
         Field("id_materia", "Materia", "select", required=True, create_only=True, options=_opts_materia,
-              depends_on="id_inscrito", dep_options=_materias_de_inscrito, dep_strict=False,
-              help="1ro/2do Técnico Medio: solo las permitidas (arrastres, 2do con requisitos aprobados). "
+              depends_on="id_curso", dep_options=_materias_de_inscrito, dep_strict=False,
+              dep_include=("id_inscrito",),
+              help="1ro/2do Técnico Medio: solo las permitidas (arrastres pendientes, 2do con requisitos aprobados). "
                    "Otros grados: las del grado, u otras si la inscripción lo permite."),
         Field("id_profesor", "Profesor", "select",
               options=opts(Profesor, [Profesor.paterno, Profesor.nombre], where=Profesor.activo.is_(True))),
