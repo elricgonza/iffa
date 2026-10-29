@@ -99,6 +99,12 @@ recibe todos).
     o permitidas de ese curso.
   * Las materias de otro grado se cursan en un curso de ese grado de la gestión vigente (queda en `asignado.id_curso`).
     El selector de materia de *Asignaciones* muestra solo las permitidas para el inscrito elegido.
+* **Gestión activa**: solo UNA gestión académica puede estar «Activa» (se valida al crear/editar y lo refuerza un
+  índice único en la base: en bases ya creadas ejecute `scripts/migracion_gestion_activa_unica.sql`). Para cambiar de
+  gestión primero se desactiva la vigente y luego se activa la nueva. La gestión activa se muestra siempre en el menú
+  lateral (junto al usuario) y en la barra superior móvil. Crear/editar/eliminar gestiones es exclusivo del Administrador.
+  Los listados de **Cursos, Inscripciones, Asignaciones y Calificaciones** muestran por defecto la gestión activa; el
+  combo *Gestión* permite elegir otra o «Todas las gestiones».
 * **Fechas de transcripción de notas** (solo Administrador: *Administración → Fechas Transcripción Notas*): se guardan
   en `config_notas.json` (raíz del proyecto, o la ruta de `CONFIG_NOTAS_PATH` en `.env`; se crea solo la primera vez y
   el usuario del servicio —`www-data`— debe poder escribir en esa carpeta). Por cada período (`nota1`…`nota4` y `2t`):

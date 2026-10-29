@@ -40,6 +40,13 @@
       <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
     </button>
     <span class="font-semibold tracking-wide">IFALFA</span>
+    {% if current_user.is_authenticated %}
+    <a href="{{ url_for('crud.index', key='gestion') if current_user.has_perm('gestion_ver') else '#' }}"
+       class="ml-auto text-xs rounded-full px-3 py-1 {{ 'bg-white/15' if gestion_activa else 'bg-amber-400 text-amber-950 font-semibold' }}"
+       title="Gestión académica activa">
+      {% if gestion_activa %}Gestión {{ gestion_activa.gestion }}{% else %}Sin gestión activa{% endif %}
+    </a>
+    {% endif %}
   </header>
 
   <div x-show="sidebar" x-cloak class="fixed inset-0 z-30 bg-black/40 md:hidden" @click="sidebar = false"></div>
@@ -63,6 +70,18 @@
       {% endfor %}
     </nav>
     <div class="p-4 border-t border-white/10 text-sm">
+      {% if current_user.is_authenticated %}
+      <div class="mb-3 rounded-lg px-3 py-2 {{ 'bg-brand-600/60 border border-brand-500/40' if gestion_activa else 'bg-amber-400/20 border border-amber-300/40' }}"
+           title="Gestión académica activa">
+        <p class="text-[10px] uppercase tracking-wider text-slate-300">Gestión activa</p>
+        {% if gestion_activa %}
+          <p class="text-sm font-semibold text-white truncate">{{ gestion_activa.gestion }} · {{ gestion_activa.plan }}</p>
+          {% if gestiones_activas > 1 %}<p class="text-[11px] text-amber-300">⚠ Hay {{ gestiones_activas }} gestiones activas</p>{% endif %}
+        {% else %}
+          <p class="text-sm font-semibold text-amber-300">Sin gestión activa</p>
+        {% endif %}
+      </div>
+      {% endif %}
       <a href="{{ url_for('auth.perfil') }}" class="block font-medium text-white truncate hover:underline">{{ current_user.usuario }}</a>
       <p class="text-xs text-slate-400 truncate mb-2">{{ current_user.roles|join(', ') }}</p>
       <form method="post" action="{{ url_for('auth.logout') }}">

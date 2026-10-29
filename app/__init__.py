@@ -5,7 +5,7 @@ from flask_wtf.csrf import CSRFError, CSRFProtect
 from werkzeug.exceptions import HTTPException
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-from .models import Permiso, Rol, Usuario, db
+from .models import Gestion, Permiso, Rol, Usuario, db
 
 login_manager = LoginManager()
 csrf = CSRFProtect()
@@ -62,7 +62,9 @@ def create_app():
     @app.context_processor
     def _ctx():
         grupos = []
+        activas = []
         if current_user.is_authenticated:
+            activas = Gestion.query.filter(Gestion.activo.is_(True)).order_by(Gestion.gestion.desc(), Gestion.id.desc()).all()
             for titulo, claves in GRUPOS_MENU:
                 items = [(RESOURCES[k].title, url_for("crud.index", key=k), k) for k in claves
                          if current_user.has_perm(RESOURCES[k].perm("ver"))]
@@ -70,7 +72,8 @@ def create_app():
                     items.insert(0, ("Fechas Transcripción Notas", url_for("cfgnotas.notas"), "cfg_notas"))
                 if items:
                     grupos.append((titulo, items))
-        return {"menu": grupos}
+        # gestion_activa: la gestión vigente (si por datos antiguos hubiera varias, la más reciente)
+        return {"menu": grupos, "gestion_activa": activas[0] if activas else None, "gestiones_activas": len(activas)}
 
     @app.after_request
     def _headers(resp):

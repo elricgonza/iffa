@@ -63,6 +63,35 @@ def like(*cols):
     return fn
 
 
+# ---- filtro «Gestión»: por defecto la gestión activa; se puede elegir otra o «todas»
+_CURSOS_ACTIVOS = select(Curso.id).join(Gestion, Curso.id_gestion == Gestion.id).where(Gestion.activo.is_(True))
+
+
+def _opts_gestion_filtro():
+    ges = [(g.id, str(g)) for g in Gestion.query.order_by(Gestion.gestion.desc(), Gestion.id.desc())]
+    return [("activa", "Gestión activa")] + ges + [("todas", "Todas las gestiones")]
+
+
+def _filtro_gestion(q, v):
+    """Para consultas que ya incluyen Curso (cursos, inscripciones)."""
+    if v == "activa":
+        return q.filter(Curso.id_gestion.in_(select(Gestion.id).where(Gestion.activo.is_(True))))
+    return q.filter(Curso.id_gestion == int(v))
+
+
+def _filtro_gestion_en(col):
+    """Filtro por la gestión del curso referido por `col` (p. ej. Asignado.id_curso)."""
+    def aplicar(q, v):
+        if v == "activa":
+            return q.filter(col.in_(_CURSOS_ACTIVOS))
+        return q.filter(col.in_(select(Curso.id).where(Curso.id_gestion == int(v))))
+    return aplicar
+
+
+def _filtro_gestion_def():
+    return Filter("id_gestion", "Gestión", _opts_gestion_filtro, _filtro_gestion, default="activa")
+
+
 def usuarios_con_rol(rol):
     def f():
         return [(u.id, f"{u.usuario} ({u.email})") for u in
@@ -81,6 +110,24 @@ def _vinculo_unico(modelo, data, obj, etiqueta):
 
 
 # ------------------------------------------------------------ catálogos simples
+def _validar_gestion(d, o):
+    """Fechas coherentes y a lo sumo UNA gestión activa (el índice único de la BD lo refuerza)."""
+    if not current_user.has_role("Administrador"):
+        return {"__all__": "Solo el Administrador puede gestionar las gestiones académicas."}
+    err = {}
+    if d["fin"] <= d["inicio"]:
+        err["fin"] = "Debe ser posterior al inicio"
+    if d.get("activo"):
+        q = Gestion.query.filter(Gestion.activo.is_(True))
+        if o is not None:
+            q = q.filter(Gestion.id != o.id)
+        otra = q.first()
+        if otra:
+            err["activo"] = (f"Ya existe una gestión activa ({otra}). Solo una gestión puede estar activa: "
+                             "desactive primero la otra.")
+    return err
+
+
 Resource(
     "gestion", Gestion, "Gestiones académicas", "Gestión",
     fields=[
@@ -88,13 +135,14 @@ Resource(
         Field("plan", "Plan / nombre", required=True),
         Field("inicio", "Inicio", "date", required=True),
         Field("fin", "Fin", "date", required=True),
-        Field("activo", "Activa", "bool", default=True),
+        Field("activo", "Activa", "bool", default=False,
+              help="Solo una gestión puede estar activa a la vez."),
     ],
     columns=[Col("Año", "gestion"), Col("Plan", "plan"), Col("Inicio", "inicio", "date", True),
              Col("Fin", "fin", "date", True), Col("Activa", "activo", "bool")],
     search=like(Gestion.plan, Gestion.gestion),
     order=lambda: [Gestion.gestion.desc()],
-    validate=lambda d, o: ({"fin": "Debe ser posterior al inicio"} if d["fin"] <= d["inicio"] else {}),
+    validate=lambda d, o: _validar_gestion(d, o), solo_admin=True,
 )
 
 Resource(
@@ -165,8 +213,7 @@ Resource(
              Col("Aula", "aula", hide=True), Col("Cupos", "capacidad", hide=True)],
     query=lambda: Curso.query.join(Gestion, Curso.id_gestion == Gestion.id).join(Grado, Curso.id_grado == Grado.id),
     search=like(Curso.curso, Curso.paralelo, Grado.grado),
-    filters=[Filter("id_gestion", "Gestión", opts(Gestion, [Gestion.gestion.desc()]),
-                    lambda q, v: q.filter(Curso.id_gestion == int(v)))],
+    filters=[_filtro_gestion_def()],
     order=lambda: [Gestion.gestion.desc(), Grado.grado, Curso.paralelo],
 )
 
@@ -318,22 +365,10 @@ def buscar_alumnos(texto):
     return [(a.id, _etiqueta_alumno(a)) for a in q]
 
 
-def _opts_gestion_filtro():
-    ges = [(g.id, str(g)) for g in Gestion.query.order_by(Gestion.gestion.desc(), Gestion.id.desc())]
-    return [("activa", "Gestión activa")] + ges + [("todas", "Todas las gestiones")]
-
-
-def _filtro_gestion(q, v):
-    if v == "activa":
-        return q.filter(Curso.id_gestion.in_(db.session.query(Gestion.id).filter(Gestion.activo.is_(True))))
-    return q.filter(Curso.id_gestion == int(v))
-
-
 _ins_base = lambda: (Inscrito.query.join(Alumno, Inscrito.id_alumno == Alumno.id)
                      .join(Curso, Inscrito.id_curso == Curso.id))
 _eager_ins = [selectinload(Inscrito.alumno), selectinload(Inscrito.curso).selectinload(Curso.gestion),
               selectinload(Inscrito.curso).selectinload(Curso.grado)]
-_CURSOS_ACTIVOS = select(Curso.id).join(Gestion, Curso.id_gestion == Gestion.id).where(Gestion.activo.is_(True))
 
 
 def _opts_inscrito():
@@ -371,7 +406,7 @@ Resource(
              Col("Abandono", "abandono", "bool", True)],
     query=_ins_base, scope=_scope_inscrito,
     search=like(Alumno.nombre, Alumno.paterno, Alumno.materno, Alumno.ci),
-    filters=[Filter("id_gestion", "Gestión", _opts_gestion_filtro, _filtro_gestion, default="activa"),
+    filters=[_filtro_gestion_def(),
              Filter("id_instrumento", "Instrumento", opts(Instrumento, [Instrumento.instrumento]),
                     lambda q, v: q.filter(Inscrito.id_instrumento == int(v))),
              Filter("id_curso", "Curso", _opts_curso, lambda q, v: q.filter(Inscrito.id_curso == int(v)))],
@@ -506,7 +541,9 @@ Resource(
              Col("Profesor", lambda a: a.profesor.nombre_completo if a.profesor else None)],
     query=_asig_base, scope=_scope_asignado,
     search=like(Alumno.nombre, Alumno.paterno, Alumno.materno, Materia.materia),
-    filters=[Filter("id_curso", "Curso", _opts_curso, lambda q, v: q.filter(Asignado.id_curso == int(v))),
+    filters=[Filter("id_gestion", "Gestión", _opts_gestion_filtro, _filtro_gestion_en(Asignado.id_curso),
+                    default="activa"),
+             Filter("id_curso", "Curso", _opts_curso, lambda q, v: q.filter(Asignado.id_curso == int(v))),
              Filter("id_profesor", "Profesor", _opts_profesor_filtro, _filtro_profesor)],
     order=lambda: [Asignado.id_curso.desc(), Materia.materia, Alumno.paterno, Alumno.nombre],
     validate=_validar_asignado, before_save=_before_save_asignado,
@@ -571,7 +608,9 @@ Resource(
     query=_nota_base, scope=_scope_nota, can_edit=_puede_editar_nota,
     allow_create=False, allow_delete=False,
     search=like(Alumno.nombre, Alumno.paterno, Alumno.materno, Materia.materia),
-    filters=[Filter("id_curso", "Curso", _opts_curso, lambda q, v: q.filter(Asignado.id_curso == int(v))),
+    filters=[Filter("id_gestion", "Gestión", _opts_gestion_filtro, _filtro_gestion_en(Asignado.id_curso),
+                    default="activa"),
+             Filter("id_curso", "Curso", _opts_curso, lambda q, v: q.filter(Asignado.id_curso == int(v))),
              Filter("id_materia", "Materia", _opts_materia, lambda q, v: q.filter(Asignado.id_materia == int(v)))],
     order=lambda: [Asignado.id_curso.desc(), Materia.materia, Alumno.paterno, Alumno.nombre],
     before_save=_before_save_nota, info="crud/_info_nota.html",

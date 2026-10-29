@@ -87,7 +87,7 @@ class Resource:
                  search=None, filters=(), order=None, scope=None, can_edit=None,
                  can_delete=None, allow_create=True, allow_edit=True, allow_delete=True,
                  validate=None, before_save=None, after_save=None, before_delete=None,
-                 toolbar=None, info=None, form_size="max-w-2xl"):
+                 toolbar=None, info=None, solo_admin=False, form_size="max-w-2xl"):
         self.key, self.model, self.title, self.singular = key, model, title, singular
         self.fields, self.columns, self.filters = fields, columns, list(filters)
         self.query, self.search, self.order, self.scope = query, search, order, scope
@@ -96,6 +96,7 @@ class Resource:
         self.validate, self.before_save, self.after_save = validate, before_save, after_save
         self.before_delete, self.toolbar, self.form_size = before_delete, toolbar, form_size
         self.info = info  # plantilla opcional con información bajo el título del listado
+        self.solo_admin = solo_admin  # crear/editar/eliminar solo para el rol Administrador (además del permiso)
         RESOURCES[key] = self
 
     # ---- permisos
@@ -112,15 +113,18 @@ class Resource:
             p.append("eliminar")
         return [self.perm(x) for x in p]
 
+    def _admin_ok(self, user):
+        return not self.solo_admin or user.has_role("Administrador")
+
     def puede_crear(self, user):
-        return self.allow_create and user.has_perm(self.perm("crear"))
+        return self.allow_create and user.has_perm(self.perm("crear")) and self._admin_ok(user)
 
     def puede_editar(self, obj, user):
-        return (self.allow_edit and user.has_perm(self.perm("editar"))
+        return (self.allow_edit and user.has_perm(self.perm("editar")) and self._admin_ok(user)
                 and (self._can_edit(obj, user) if self._can_edit else True))
 
     def puede_eliminar(self, obj, user):
-        return (self.allow_delete and user.has_perm(self.perm("eliminar"))
+        return (self.allow_delete and user.has_perm(self.perm("eliminar")) and self._admin_ok(user)
                 and (self._can_delete(obj, user) if self._can_delete else True))
 
     # ---- consultas
@@ -455,7 +459,7 @@ def buscar(key, fname):
 def nuevo(key):
     r = _res(key)
     _need(r, "crear")
-    if not r.allow_create:
+    if not r.puede_crear(current_user):
         abort(403)
     return _render_form(r, None, r.initial_values(None), {})
 
@@ -483,7 +487,7 @@ def guardar(key):
             abort(403)
     else:
         _need(r, "crear")
-        if not r.allow_create:
+        if not r.puede_crear(current_user):
             abort(403)
         obj = None
 

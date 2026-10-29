@@ -31,6 +31,8 @@
             <input type="checkbox" name="{{ f.name }}" {{ 'checked' if values[f.name] }}
                    class="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"> {{ f.label }}
           </label>
+          {% if err %}<p class="mt-1 text-xs text-red-600">{{ err }}</p>
+          {% elif f.help %}<p class="mt-1 text-xs text-slate-500">{{ f.help }}</p>{% endif %}
         {% else %}
           <label for="f_{{ f.name }}" class="block text-sm font-medium text-slate-700">{{ f.label }}{% if f.required or (f.req_create and not obj) %} <span class="text-red-500">*</span>{% endif %}</label>
           {% set bloqueo = r.bloqueo(f, obj) %}

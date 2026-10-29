@@ -20,7 +20,7 @@ os.environ["CONFIG_NOTAS_PATH"] = os.path.join(tempfile.mkdtemp(), "config_notas
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app import create_app  # noqa: E402
 from app.models import (Alumno, Asignado, Curso, Gestion, Grado, Inscrito, Instrumento, Materia, Nota, Pago,  # noqa: E402
-                        Profesor, Rol, Usuario, db)
+                        Permiso, Profesor, Rol, Usuario, db)
 
 app = create_app()
 app.config["WTF_CSRF_ENABLED"] = False
@@ -388,6 +388,76 @@ if True:
     ok(cur == {1} and 'value="1" selected' in txt and "Lenguaje" in txt, "grado común: curso único preseleccionado y materias del grado")
     r = post(admin, "asignado", id_inscrito=1, id_materia=1, id_curso=C2)
     ok(b"ya est" in r.data or b"curso de la inscripci" in r.data, "grado común: no se puede elegir otro curso")
+
+    # ---- Gestiones: una sola activa, visible en todas las pantallas, vistas por defecto de la gestión activa
+    G = dict(inicio="2026-02-01", fin="2026-12-01")
+    r = post(admin, "gestion", gestion=2027, plan="Plan 2027", inicio="2027-02-01", fin="2027-12-01", activo=True)
+    ok(b"Solo una gesti" in r.data and db_(lambda: Gestion.query.filter_by(gestion=2027).count()) == 0,
+       "gestión nueva «activa» con otra ya activa: rechazada")
+    r = post(admin, "gestion", id=2, gestion=2025, plan="Plan 2025", inicio="2025-02-01", fin="2025-12-01", activo=True)
+    ok(b"Solo una gesti" in r.data and db_(lambda: db.session.get(Gestion, 2).activo) is False,
+       "editar otra gestión a «activa»: rechazado")
+    r = post(admin, "gestion", id=1, gestion=2026, plan="Plan 2026", activo=True, **G)
+    ok(b"Solo una gesti" not in r.data and db_(lambda: db.session.get(Gestion, 1).activo) is True,
+       "la gestión activa se puede editar manteniéndola activa")
+
+    def _dup():
+        try:
+            db.session.add(Gestion(gestion=2030, plan="X", inicio=date(2030, 1, 1), fin=date(2030, 12, 1),
+                                   activo=True, id_usuario=1))
+            db.session.commit()
+            return False
+        except Exception:
+            db.session.rollback()
+            return True
+    ok(db_(_dup), "el índice único de la BD impide dos gestiones activas")
+
+    home = admin.get("/").get_data(as_text=True)
+    ok("Gestión activa" in home and "2026 · Plan 2026" in home and "Gestión 2026" in home,
+       "la gestión activa se muestra en el menú lateral y en la barra móvil")
+    ok("2026 · Plan 2026" in p1.get("/nota/").get_data(as_text=True), "visible también para otros usuarios y pantallas")
+    post(admin, "gestion", id=1, gestion=2026, plan="Plan 2026", **G)  # desactivar
+    ok("Sin gestión activa" in admin.get("/").get_data(as_text=True), "sin gestión activa: aviso")
+    post(admin, "gestion", id=2, gestion=2025, plan="Plan 2025", inicio="2025-02-01", fin="2025-12-01", activo=True)
+    ok("2025 · Plan 2025" in admin.get("/").get_data(as_text=True), "cambia la gestión activa (primero desactivar, luego activar)")
+    post(admin, "gestion", id=2, gestion=2025, plan="Plan 2025", inicio="2025-02-01", fin="2025-12-01")
+    post(admin, "gestion", id=1, gestion=2026, plan="Plan 2026", activo=True, **G)  # restaurar
+    ok(db_(lambda: [g.activo for g in Gestion.query.order_by(Gestion.id)])[:2] == [True, False], "estado restaurado")
+
+    # solo el Administrador gestiona las gestiones, aunque otro rol tuviera el permiso
+    def _dar(perms):
+        rol = Rol.query.filter_by(rol="Transcriptor").first()
+        rol.permisos = [p for p in rol.permisos if not p.permiso.startswith("gestion_")] + \
+                       Permiso.query.filter(Permiso.permiso.in_(perms)).all()
+        db.session.commit()
+    db_(lambda: _dar(["gestion_ver", "gestion_crear", "gestion_editar", "gestion_eliminar"]))
+    tr, _ = login("trans1", "Clave12345")
+    ok(tr.get("/gestion/nuevo").status_code == 403 and tr.post("/gestion/guardar", data={"gestion": 2040}).status_code == 403
+       and b"+ Nuevo" not in tr.get("/gestion/").data and b"Editar" not in tr.get("/gestion/", headers=HX).data,
+       "gestiones: un rol con permisos no-administrador no puede crear/editar")
+    db_(lambda: _dar(["gestion_ver"]))
+
+    # vistas por defecto: gestión activa (con opción de elegir otra)
+    def _vieja():
+        a = Asignado(id_inscrito=iv2, id_curso=2, id_materia=1, id_usuario=1)
+        db.session.add(a)
+        db.session.flush()
+        n = Nota(id_asignado=a.id, id_usuario=1)
+        db.session.add(n)
+        db.session.commit()
+        return n.id
+    nid_old = db_(_vieja)  # Vega: asignación en un curso de la gestión 2025 (no activa)
+    for modulo, texto in (("curso", "2025"), ("asignado", "Vega"), ("nota", "Vega")):
+        pag = admin.get(f"/{modulo}/").get_data(as_text=True)
+        por_def = admin.get(f"/{modulo}/", headers=HX).get_data(as_text=True)
+        todas = admin.get(f"/{modulo}/?id_gestion=todas", headers=HX).get_data(as_text=True)
+        otra = admin.get(f"/{modulo}/?id_gestion=2", headers=HX).get_data(as_text=True)
+        ok('value="activa" selected' in pag and texto not in por_def and texto in todas and texto in otra,
+           f"{modulo}: por defecto la gestión activa; se puede elegir otra o «todas»")
+    ok("Rojas" in admin.get("/nota/", headers=HX).get_data(as_text=True)
+       and "Rojas" not in admin.get("/nota/?id_gestion=2", headers=HX).get_data(as_text=True),
+       "calificaciones: la gestión elegida filtra correctamente")
+    ok(admin.get(f"/nota/{nid_old}/editar").status_code == 200, "se puede abrir una calificación de una gestión anterior")
 
     # integridad
     r = admin.post("/inscrito/1/eliminar", headers={"HX-Request": "true"})
