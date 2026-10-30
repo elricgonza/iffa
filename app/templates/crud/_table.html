@@ -24,6 +24,9 @@
             {% endfor %}
             {% if puede_editar or puede_borrar %}
               <td class="px-3 py-2 whitespace-nowrap text-right">
+                {% if not r.puede_editar(obj, current_user) and puede_editar and r._can_edit %}
+                  <span class="text-xs text-slate-400" title="Solo se puede editar lo que corresponde a la gestión vigente">Solo lectura</span>
+                {% endif %}
                 {% if r.puede_editar(obj, current_user) %}
                   <button class="text-brand-600 hover:underline mr-3"
                           hx-get="{{ url_for('crud.editar', key=r.key, oid=obj.id) }}" hx-target="#modal-body"

@@ -87,11 +87,11 @@ class Resource:
                  search=None, filters=(), order=None, scope=None, can_edit=None,
                  can_delete=None, allow_create=True, allow_edit=True, allow_delete=True,
                  validate=None, before_save=None, after_save=None, before_delete=None,
-                 toolbar=None, info=None, solo_admin=False, form_size="max-w-2xl"):
+                 toolbar=None, info=None, solo_admin=False, can_create=None, form_size="max-w-2xl"):
         self.key, self.model, self.title, self.singular = key, model, title, singular
         self.fields, self.columns, self.filters = fields, columns, list(filters)
         self.query, self.search, self.order, self.scope = query, search, order, scope
-        self._can_edit, self._can_delete = can_edit, can_delete
+        self._can_edit, self._can_delete, self._can_create = can_edit, can_delete, can_create
         self.allow_create, self.allow_edit, self.allow_delete = allow_create, allow_edit, allow_delete
         self.validate, self.before_save, self.after_save = validate, before_save, after_save
         self.before_delete, self.toolbar, self.form_size = before_delete, toolbar, form_size
@@ -117,7 +117,8 @@ class Resource:
         return not self.solo_admin or user.has_role("Administrador")
 
     def puede_crear(self, user):
-        return self.allow_create and user.has_perm(self.perm("crear")) and self._admin_ok(user)
+        return (self.allow_create and user.has_perm(self.perm("crear")) and self._admin_ok(user)
+                and (self._can_create(user) if self._can_create else True))
 
     def puede_editar(self, obj, user):
         return (self.allow_edit and user.has_perm(self.perm("editar")) and self._admin_ok(user)

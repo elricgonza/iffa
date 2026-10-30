@@ -105,6 +105,10 @@ recibe todos).
   lateral (junto al usuario) y en la barra superior móvil. Crear/editar/eliminar gestiones es exclusivo del Administrador.
   Los listados de **Cursos, Inscripciones, Asignaciones y Calificaciones** muestran por defecto la gestión activa; el
   combo *Gestión* permite elegir otra o «Todas las gestiones».
+* **Edición solo en la gestión vigente**: únicamente se pueden editar (y eliminar) **cursos, inscripciones,
+  asignaciones y calificaciones** que correspondan a un curso de la gestión activa; los de otras gestiones quedan en
+  «Solo lectura» (se consultan con el combo *Gestión*). «+ Nuevo» de Inscripciones y Asignaciones, y
+  *Asignar profesor por curso/materia*, solo operan sobre cursos de la gestión vigente y se ocultan si no hay una activa.
 * **Fechas de transcripción de notas** (solo Administrador: *Administración → Fechas Transcripción Notas*): se guardan
   en `config_notas.json` (raíz del proyecto, o la ruta de `CONFIG_NOTAS_PATH` en `.env`; se crea solo la primera vez y
   el usuario del servicio —`www-data`— debe poder escribir en esa carpeta). Por cada período (`nota1`…`nota4` y `2t`):

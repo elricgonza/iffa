@@ -11,6 +11,7 @@ from . import config_notas
 from .crud import RESOURCES, _render_table
 from .models import Asignado, Curso, Materia, Pago, Profesor, Usuario, db
 from .security import log_accion, scope_kind
+from .services import cursos_vigentes_ids
 
 auth_bp = Blueprint("auth", __name__)
 main_bp = Blueprint("main", __name__)
@@ -115,7 +116,8 @@ def inicio():
 # -------------------------------------------- asignación masiva de profesor
 def _opciones_form():
     return dict(
-        cursos=[(c.id, str(c)) for c in Curso.query.order_by(Curso.id_gestion.desc(), Curso.paralelo).all()],
+        cursos=[(c.id, str(c)) for c in Curso.query.filter(Curso.id.in_(cursos_vigentes_ids()))
+                .order_by(Curso.paralelo).all()],  # solo cursos de la gestión vigente
         profesores=[(p.id, p.nombre_completo) for p in
                     Profesor.query.filter_by(activo=True).order_by(Profesor.paterno, Profesor.nombre)],
     )
@@ -156,6 +158,8 @@ def masivo_guardar():
     errors = {}
     if not id_curso or not db.session.get(Curso, id_curso):
         errors["id_curso"] = "Seleccione un curso"
+    elif id_curso not in cursos_vigentes_ids():
+        errors["id_curso"] = "Solo se puede asignar profesor en cursos de la gestión vigente"
     if not id_prof or not Profesor.query.filter_by(id=id_prof, activo=True).first():
         errors["id_profesor"] = "Seleccione un profesor activo"
     if not errors and id_mat not in {m for m, _ in _materias_de_curso(id_curso)}:

@@ -1,3 +1,5 @@
+{% if gestion_activa %}
 <button class="rounded-lg border border-brand-600 text-brand-600 hover:bg-brand-50 text-sm font-medium px-4 py-2"
         hx-get="{{ url_for('acad.masivo') }}" hx-target="#modal-body" hx-swap="innerHTML"
         @click="modal = true">Asignar profesor por curso/materia</button>
+{% endif %}

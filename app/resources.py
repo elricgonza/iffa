@@ -14,7 +14,8 @@ from .models import (Alumno, Asignado, AuditLog, Curso, Gestion, Grado, Inscrito
                      Instrumento, Materia, Nota, Pago, Permiso, Profesor, Rol, Usuario, db)
 from .security import mi_alumno, mi_profesor, scope_kind
 from .services import (METODOS_PAGO, crear_asignado, curso_para_materia, cursos_candidatos,
-                       cursos_para_inscripcion, generar_pagos_y_asignados, nivel_tm, permitidas_tm,
+                       cursos_para_inscripcion, cursos_vigentes_ids, generar_pagos_y_asignados,
+                       hay_gestion_activa, nivel_tm, permitidas_tm,
                        nota_tiene_valores, recalcular_pagos_pendientes, requisitos_pendientes,
                        validar_asignacion_tm)
 
@@ -215,6 +216,8 @@ Resource(
     search=like(Curso.curso, Curso.paralelo, Grado.grado),
     filters=[_filtro_gestion_def()],
     order=lambda: [Gestion.gestion.desc(), Grado.grado, Curso.paralelo],
+    can_edit=lambda c, user: c.id in cursos_vigentes_ids(),  # solo cursos de la gestión vigente
+    can_delete=lambda c, user: c.id in cursos_vigentes_ids(),
 )
 
 
@@ -302,6 +305,8 @@ def _validar_inscrito(d, o):
     err = _bloqueo_tm(db.session.get(Curso, d["id_curso"]) if o is None else o.curso)
     if err:
         return err
+    if o is None and d["id_curso"] not in cursos_vigentes_ids():
+        return {"id_curso": "Solo se pueden registrar inscripciones en cursos de la gestión vigente"}
     if o is None:
         if Inscrito.query.filter_by(id_alumno=d["id_alumno"], id_curso=d["id_curso"]).first():
             err["id_curso"] = "El alumno ya está inscrito en este curso"
@@ -413,6 +418,9 @@ Resource(
     order=lambda: [Curso.id_gestion.desc(), Alumno.paterno, Alumno.materno, Alumno.nombre],
     validate=_validar_inscrito, before_save=_before_save_inscrito,
     after_save=_after_save_inscrito, before_delete=_before_delete_inscrito,
+    can_create=lambda user: hay_gestion_activa(),  # «+ Nuevo» solo con gestión vigente
+    can_edit=lambda i, user: i.id_curso in cursos_vigentes_ids(),
+    can_delete=lambda i, user: i.id_curso in cursos_vigentes_ids(),
 )
 
 
@@ -464,6 +472,10 @@ def _validar_asignado(d, o):
     ins = db.session.get(Inscrito, d["id_inscrito"])
     mat = db.session.get(Materia, d["id_materia"])
     id_curso = d.get("id_curso")
+    if ins.id_curso not in cursos_vigentes_ids():
+        return {"id_inscrito": "La inscripción no pertenece a la gestión vigente"}
+    if id_curso and id_curso not in cursos_vigentes_ids():
+        return {"id_curso": "Solo se pueden asignar materias en cursos de la gestión vigente"}
     if Asignado.query.filter_by(id_inscrito=ins.id, id_materia=mat.id).first():
         return {"id_materia": "La materia ya está asignada a este inscrito"}
     if nivel_tm(ins.curso.grado):
@@ -549,6 +561,9 @@ Resource(
     validate=_validar_asignado, before_save=_before_save_asignado,
     after_save=_after_save_asignado, before_delete=_before_delete_asignado,
     toolbar="crud/_toolbar_asignado.html",
+    can_create=lambda user: hay_gestion_activa(),  # «+ Nuevo» solo con gestión vigente
+    can_edit=lambda a, user: a.id_curso in cursos_vigentes_ids(),
+    can_delete=lambda a, user: a.id_curso in cursos_vigentes_ids(),
 )
 
 
@@ -565,6 +580,8 @@ def _scope_nota(q):
 
 
 def _puede_editar_nota(n, user):
+    if n.asignado.id_curso not in cursos_vigentes_ids():  # solo calificaciones de la gestión vigente
+        return False
     k = scope_kind()
     if k == "all":
         return True

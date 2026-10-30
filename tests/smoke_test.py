@@ -132,7 +132,8 @@ if True:
     ok(b"Vega" not in admin.get("/inscrito/?id_gestion=abc", headers=HX).data, "parámetro manipulado no rompe (500)")
     page = admin.get("/inscrito/").data
     ok(b'value="activa" selected' in page, "filtro de gestión preseleccionado en «Gestión activa»")
-    ok(admin.get("/inscrito/2/editar").status_code == 200, "se puede editar una inscripción de gestión anterior")
+    ok(admin.get("/inscrito/2/editar").status_code == 403, "inscripción de una gestión anterior: no editable")
+    ok(admin.get("/inscrito/1/editar").status_code == 200, "inscripción de la gestión vigente: editable")
     ok(b"Vega" in admin.get("/inscrito/?q=vega&id_gestion=todas", headers=HX).data, "búsqueda en listado")
 
     r = admin.get("/inscrito/opciones/id_curso?id_instrumento=1", headers={"HX-Request": "true"})
@@ -457,7 +458,42 @@ if True:
     ok("Rojas" in admin.get("/nota/", headers=HX).get_data(as_text=True)
        and "Rojas" not in admin.get("/nota/?id_gestion=2", headers=HX).get_data(as_text=True),
        "calificaciones: la gestión elegida filtra correctamente")
-    ok(admin.get(f"/nota/{nid_old}/editar").status_code == 200, "se puede abrir una calificación de una gestión anterior")
+    # ---- Edición solo en la gestión vigente (cursos, inscripciones, asignaciones, calificaciones)
+    old_asig = db_(lambda: Asignado.query.filter_by(id_curso=2).first().id)
+    ok(admin.get("/curso/1/editar").status_code == 200 and admin.get("/curso/2/editar").status_code == 403
+       and admin.post("/curso/guardar", data={"id": 2, "id_gestion": 2, "id_grado": 1, "paralelo": "Z"}).status_code == 403
+       and admin.post("/curso/2/eliminar").status_code == 403, "cursos: solo se editan/eliminan los de la gestión vigente")
+    ok("Solo lectura" in admin.get("/curso/?id_gestion=2", headers=HX).get_data(as_text=True)
+       and "Solo lectura" not in admin.get("/curso/", headers=HX).get_data(as_text=True),
+       "cursos de otra gestión se muestran como «Solo lectura»")
+    ok(admin.get("/inscrito/2/editar").status_code == 403
+       and admin.post("/inscrito/guardar", data={"id": 2, "descuento": 5}).status_code == 403
+       and admin.post("/inscrito/2/eliminar").status_code == 403, "inscripciones: solo las de la gestión vigente")
+    ok(admin.get(f"/asignado/{old_asig}/editar").status_code == 403
+       and admin.post("/asignado/guardar", data={"id": old_asig, "id_profesor": 1}).status_code == 403,
+       "asignaciones: solo las de la gestión vigente")
+    ok(admin.get(f"/nota/{nid_old}/editar").status_code == 403
+       and admin.post("/nota/guardar", data={"id": nid_old, "nota1": 90}).status_code == 403,
+       "calificaciones: solo las de la gestión vigente")
+    ok(admin.get("/asignado/1/editar").status_code in (200, 404) and "2025" not in admin.get("/asignado/masivo").get_data(as_text=True),
+       "«Asignar profesor por curso/materia»: solo cursos de la gestión vigente")
+    r = admin.post("/asignado/masivo", data={"id_curso": 2, "id_materia": 1, "id_profesor": 1},
+                   headers={"HX-Request": "true", "HX-Current-URL": "http://x/asignado/"})
+    ok("gestión vigente".encode() in r.data and db_(lambda: db.session.get(Asignado, old_asig).id_profesor) is None,
+       "asignación masiva en un curso de otra gestión: rechazada")
+    r = post(admin, "inscrito", id_alumno=2, id_curso=2, id_instrumento=1, inscrito=True, descuento=0)
+    ok(b"no v" in r.data or "gestión vigente".encode() in r.data, "nueva inscripción en curso de otra gestión: rechazada")
+    # sin gestión activa: no se puede crear inscripciones/asignaciones ni asignar profesor
+    post(admin, "gestion", id=1, gestion=2026, plan="Plan 2026", inicio="2026-02-01", fin="2026-12-01")  # desactiva
+    pag_i, pag_a = admin.get("/inscrito/").get_data(as_text=True), admin.get("/asignado/").get_data(as_text=True)
+    ok("+ Nuevo" not in pag_i and "+ Nuevo" not in pag_a and "Asignar profesor por curso" not in pag_a
+       and admin.get("/inscrito/nuevo").status_code == 403 and admin.get("/asignado/nuevo").status_code == 403,
+       "sin gestión vigente: «+ Nuevo» y asignación masiva no disponibles")
+    ok(admin.get("/curso/1/editar").status_code == 403 and admin.get(f"/nota/{nid_old}/editar").status_code == 403,
+       "sin gestión vigente: nada es editable")
+    post(admin, "gestion", id=1, gestion=2026, plan="Plan 2026", inicio="2026-02-01", fin="2026-12-01", activo=True)  # restaurar
+    ok("+ Nuevo" in admin.get("/inscrito/").get_data(as_text=True) and "Asignar profesor por curso" in admin.get("/asignado/").get_data(as_text=True),
+       "con gestión vigente: «+ Nuevo» y asignación masiva disponibles")
 
     # integridad
     r = admin.post("/inscrito/1/eliminar", headers={"HX-Request": "true"})

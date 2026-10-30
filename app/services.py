@@ -2,11 +2,24 @@
 import re
 import unicodedata
 
-from flask import current_app
+from flask import current_app, g
 
 from .models import Asignado, Curso, Gestion, Grado, Inscrito, Materia, Nota, Pago, db
 
 METODOS_PAGO = ["Efectivo", "Transferencia", "Depósito", "QR", "Tarjeta"]
+
+
+def cursos_vigentes_ids():
+    """Ids de los cursos de la(s) gestión(es) activa(s) (una consulta por petición)."""
+    if "_cursos_vigentes" not in g:
+        q = (db.session.query(Curso.id).join(Gestion, Curso.id_gestion == Gestion.id)
+             .filter(Gestion.activo.is_(True)))
+        g._cursos_vigentes = {i for (i,) in q}
+    return g._cursos_vigentes
+
+
+def hay_gestion_activa():
+    return db.session.query(Gestion.id).filter(Gestion.activo.is_(True)).first() is not None
 
 
 def nota_tiene_valores(nota):
