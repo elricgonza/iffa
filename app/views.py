@@ -10,7 +10,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from . import config_notas
 from .crud import RESOURCES, _render_table
 from .models import Asignado, Curso, Materia, Pago, Profesor, Usuario, db
-from .security import log_accion, scope_kind
+from .security import log_accion, scope_kind, validar_password
 from .services import cursos_vigentes_ids
 
 auth_bp = Blueprint("auth", __name__)
@@ -77,24 +77,38 @@ def logout():
     return redirect(url_for("auth.login"))
 
 
-@auth_bp.route("/perfil", methods=["GET", "POST"])
+@auth_bp.route("/perfil")
 @login_required
 def perfil():
+    return render_template("perfil.html")
+
+
+@auth_bp.route("/cambiar-password", methods=["GET", "POST"])
+@login_required  # disponible para TODOS los usuarios autenticados (no requiere permisos)
+def cambiar_password():
+    errores = []
+    clave_limite = f"pw{current_user.id}"  # límite de intentos por usuario
     if request.method == "POST":
         actual, nueva, conf = (request.form.get(k, "") for k in ("actual", "nueva", "confirmar"))
-        if not current_user.check_password(actual):
-            flash("La contraseña actual no es correcta.", "error")
-        elif len(nueva) < 8:
-            flash("La nueva contraseña debe tener al menos 8 caracteres.", "error")
-        elif nueva != conf:
-            flash("La confirmación no coincide.", "error")
-        else:
-            current_user.set_password(nueva)
-            log_accion("UPDATE", "auth", current_user.id, {"cambio": "password"})
+        if _bloqueado(clave_limite):
+            errores.append("Demasiados intentos fallidos. Espere unos minutos e intente de nuevo.")
+        elif not current_user.check_password(actual):
+            _intentos.setdefault(clave_limite, []).append(time())
+            log_accion("ERROR", "auth", current_user.id, {"cambio_password": "contraseña actual incorrecta"}, status=401)
             db.session.commit()
-            flash("Contraseña actualizada.", "ok")
-            return redirect(url_for("auth.perfil"))
-    return render_template("perfil.html")
+            errores.append("La contraseña actual no es correcta.")
+        else:
+            errores = validar_password(nueva, current_user.usuario, actual)
+            if nueva != conf:
+                errores.append("La confirmación no coincide con la nueva contraseña.")
+            if not errores:
+                _intentos.pop(clave_limite, None)
+                current_user.set_password(nueva)
+                log_accion("UPDATE", "auth", current_user.id, {"cambio_password": "ok"})
+                db.session.commit()
+                flash("Contraseña actualizada correctamente.", "ok")
+                return redirect(url_for("auth.cambiar_password"))
+    return render_template("cambiar_password.html", errores=errores), (400 if errores else 200)
 
 
 # -------------------------------------------------------------------- panel

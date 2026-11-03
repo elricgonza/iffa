@@ -140,6 +140,14 @@ recibe todos).
 * HTMX/Alpine.js/Tailwind se cargan por CDN con versión fijada (sin paso de compilación). Para uso sin Internet o
   máximo rendimiento, descargue los archivos a `app/static/` y compile Tailwind con su CLI.
 
+### Cambio de contraseña (todos los usuarios)
+Cualquier usuario autenticado —sea cual sea su rol, incluso sin roles— puede cambiar su contraseña desde **Cambiar
+contraseña** (menú lateral, junto a «Cerrar sesión», o desde *Mi perfil*). Exige la contraseña actual; la nueva debe
+tener 8–128 caracteres, combinar letras y números, no contener el nombre de usuario y ser distinta de la actual; hay
+confirmación, indicador de requisitos en pantalla y opción de mostrar/ocultar. Tras 5 intentos fallidos con la
+contraseña actual se bloquea 5 minutos (por usuario), y todo queda en la auditoría. La misma política se aplica
+cuando el Administrador crea o cambia contraseñas en *Usuarios*.
+
 ## 7. Seguridad
 
 Contraseñas con hash (werkzeug), CSRF en todos los POST, cookies HttpOnly/SameSite, límite de 5 intentos de login

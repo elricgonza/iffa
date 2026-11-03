@@ -19,7 +19,7 @@ from datetime import date, timedelta
 os.environ["CONFIG_NOTAS_PATH"] = os.path.join(tempfile.mkdtemp(), "config_notas.json")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app import create_app  # noqa: E402
-from app.models import (Alumno, Asignado, Curso, Gestion, Grado, Inscrito, Instrumento, Materia, Nota, Pago,  # noqa: E402
+from app.models import (Alumno, Asignado, AuditLog, Curso, Gestion, Grado, Inscrito, Instrumento, Materia, Nota, Pago,  # noqa: E402
                         Permiso, Profesor, Rol, Usuario, db)
 
 app = create_app()
@@ -494,6 +494,45 @@ if True:
     post(admin, "gestion", id=1, gestion=2026, plan="Plan 2026", inicio="2026-02-01", fin="2026-12-01", activo=True)  # restaurar
     ok("+ Nuevo" in admin.get("/inscrito/").get_data(as_text=True) and "Asignar profesor por curso" in admin.get("/asignado/").get_data(as_text=True),
        "con gestión vigente: «+ Nuevo» y asignación masiva disponibles")
+
+    # ---- Cambio de contraseña: disponible para todos los usuarios, con política y límite de intentos
+    def crear_usuario(nombre, rol=None, clave="Clave12345"):
+        d = {"usuario": nombre, "email": f"{nombre}@x.com", "password": clave, "activo": "on"}
+        if rol:
+            d["roles"] = [db_(lambda: Rol.query.filter_by(rol=rol).first().id)]
+        return admin.post("/usuario/guardar", data=d, headers=HXH)
+
+    crear_usuario("pwsinrol"); crear_usuario("pwcons", "Consulta")
+    sr, _ = login("pwsinrol", "Clave12345")
+    cn, _ = login("pwcons", "Clave12345")
+    clientes = [admin, p1, a1, tr, sr, cn]  # Administrador, Profesor, Estudiante, Transcriptor, sin roles, Consulta
+    ok(all(c.get("/cambiar-password").status_code == 200 for c in clientes),
+       "cambiar contraseña: disponible para todos los roles (incluso un usuario sin roles)")
+    ok(all("Cambiar contraseña" in c.get("/").get_data(as_text=True) for c in clientes),
+       "cambiar contraseña: opción de menú visible para todos")
+    ok(app.test_client().get("/cambiar-password").status_code == 302, "cambiar contraseña: exige sesión iniciada")
+
+    cp = lambda c, **d: c.post("/cambiar-password", data=d)
+    t = lambda r: r.get_data(as_text=True)
+    r = cp(cn, actual="mala", nueva="Nueva12345", confirmar="Nueva12345")
+    ok("actual no es correcta" in t(r) and login("pwcons", "Clave12345")[1].status_code == 302, "contraseña actual incorrecta: rechazado")
+    for nueva, texto, desc in (("Ab1", "al menos 8", "muy corta"), ("abcdefghij", "letras y números", "sin números"),
+                               ("1234567890", "letras y números", "sin letras"), ("Clave12345", "distinta", "igual a la actual"),
+                               ("xpwcons99", "nombre de usuario", "contiene el usuario")):
+        ok(texto in t(cp(cn, actual="Clave12345", nueva=nueva, confirmar=nueva)), f"política: {desc}")
+    ok("no coincide" in t(cp(cn, actual="Clave12345", nueva="Nueva12345", confirmar="Otra12345")), "confirmación distinta: rechazado")
+    r = cp(cn, actual="Clave12345", nueva="Nueva12345", confirmar="Nueva12345")
+    ok(r.status_code == 302 and login("pwcons", "Clave12345")[1].status_code == 401
+       and login("pwcons", "Nueva12345")[1].status_code == 302, "cambio correcto: la clave anterior deja de servir y la nueva funciona")
+    ok(db_(lambda: AuditLog.query.filter(AuditLog.modulo == "auth", AuditLog.detalle.like("%cambio_password%")).count()) >= 2,
+       "el cambio (y los intentos fallidos) quedan en la auditoría")
+    for _ in range(5):
+        cp(sr, actual="mala", nueva="Nueva12345", confirmar="Nueva12345")
+    ok("Demasiados intentos" in t(cp(sr, actual="Clave12345", nueva="Nueva12345", confirmar="Nueva12345"))
+       and login("pwsinrol", "Clave12345")[1].status_code == 302, "5 intentos fallidos: se bloquea temporalmente (sin cambiar la clave)")
+    r = crear_usuario("pwdebil", clave="abcdefgh")
+    ok("letras y números" in t(r) and db_(lambda: Usuario.query.filter_by(usuario="pwdebil").count()) == 0,
+       "la administración de usuarios aplica la misma política")
 
     # integridad
     r = admin.post("/inscrito/1/eliminar", headers={"HX-Request": "true"})

@@ -84,6 +84,8 @@
       {% endif %}
       <a href="{{ url_for('auth.perfil') }}" class="block font-medium text-white truncate hover:underline">{{ current_user.usuario }}</a>
       <p class="text-xs text-slate-400 truncate mb-2">{{ current_user.roles|join(', ') }}</p>
+      <!--<a href="{{ url_for('auth.cambiar_password') }}"
+        class="block text-xs px-3 py-2 mb-2 rounded hover:bg-white/10 {{ 'bg-white/10 text-white font-semibold' if request.endpoint == 'auth.cambiar_password' else 'text-slate-300' }}">Cambiar contraseña</a>-->
       <form method="post" action="{{ url_for('auth.logout') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="w-full text-left text-xs px-3 py-2 rounded bg-white/10 hover:bg-white/20">Cerrar sesión</button>

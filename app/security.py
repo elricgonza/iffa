@@ -63,3 +63,20 @@ def log_accion(accion, modulo, entidad_id=None, detalle=None, status=200, usuari
         ip=request.remote_addr, endpoint=(request.endpoint or "")[:150],
         metodo=request.method, status=status,
     ))
+
+
+def validar_password(nueva, usuario=None, actual=None):
+    """Política de contraseñas (misma para el cambio propio y la administración de usuarios).
+    Devuelve la lista de problemas (vacía si es válida)."""
+    errores = []
+    if len(nueva) < 8:
+        errores.append("Debe tener al menos 8 caracteres")
+    if len(nueva) > 128:
+        errores.append("No debe superar 128 caracteres")
+    if not (any(c.isalpha() for c in nueva) and any(c.isdigit() for c in nueva)):
+        errores.append("Debe combinar letras y números")
+    if usuario and usuario.lower() in nueva.lower():
+        errores.append("No debe contener su nombre de usuario")
+    if actual is not None and nueva == actual:
+        errores.append("Debe ser distinta de la contraseña actual")
+    return errores

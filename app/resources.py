@@ -12,7 +12,7 @@ from . import config_notas
 from .crud import Col, Field, Filter, Resource
 from .models import (Alumno, Asignado, AuditLog, Curso, Gestion, Grado, Inscrito,
                      Instrumento, Materia, Nota, Pago, Permiso, Profesor, Rol, Usuario, db)
-from .security import mi_alumno, mi_profesor, scope_kind
+from .security import mi_alumno, mi_profesor, scope_kind, validar_password
 from .services import (METODOS_PAGO, crear_asignado, curso_para_materia, cursos_candidatos,
                        cursos_para_inscripcion, cursos_vigentes_ids, generar_pagos_y_asignados,
                        hay_gestion_activa, nivel_tm, permitidas_tm,
@@ -691,8 +691,10 @@ def _validar_usuario(d, o):
         q = q.filter(Usuario.id != o.id)
     if q.first():
         err["usuario"] = "Ese nombre de usuario ya existe"
-    if d.get("password") and len(d["password"]) < 8:
-        err["password"] = "Mínimo 8 caracteres"
+    if d.get("password"):
+        problemas = validar_password(d["password"], d["usuario"])
+        if problemas:
+            err["password"] = "; ".join(problemas)
     if o is not None and o.id == current_user.id:
         if not d["activo"]:
             err["activo"] = "No puede desactivar su propia cuenta"
