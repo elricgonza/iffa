@@ -1,0 +1,35 @@
+{# Plantilla base para FUTUROS REPORTES (HTML imprimible / PDF con WeasyPrint, wkhtmltopdf, etc.).
+   Es un documento HTML completo con el logo y el encabezado institucional ya incluidos.
+
+   {% extends 'reportes/_base.html' %}
+   {% block cuerpo %} ...tablas del reporte... {% endblock %}
+   render_template('reportes/mi_reporte.html', titulo_reporte='Listado de alumnos', fecha_reporte='04/11/2026') #}
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>{{ titulo_reporte or 'Reporte' }} · {{ SIGLA }}</title>
+  <style>
+    @page { size: A4; margin: 16mm 14mm 18mm; @bottom-center { content: "{{ INSTITUCION }} {{ NOMBRE_INST }} · Página " counter(page) " de " counter(pages); font: 8pt sans-serif; color: #64748b; } }
+    * { box-sizing: border-box; }
+    body { font-family: "Inter", "Helvetica Neue", Arial, sans-serif; font-size: 10pt; color: #1e293b; margin: 0; }
+    .rpt-encabezado { display: flex; align-items: center; gap: 14px; padding-bottom: 10px; border-bottom: 3px solid #193B68; }
+    .rpt-logo { height: 62px; width: auto; }
+    .rpt-inst-linea { font-size: 9pt; color: #64748b; }
+    .rpt-inst-nombre { font-size: 17pt; font-weight: 700; color: #0F233E; line-height: 1.1; }
+    .rpt-inst-sistema { font-size: 8.5pt; color: #0390C6; }
+    .rpt-meta { margin-left: auto; text-align: right; font-size: 8.5pt; color: #64748b; }
+    .rpt-titulo { font-size: 14pt; color: #193B68; margin: 16px 0 2px; }
+    .rpt-subtitulo { margin: 0 0 10px; color: #64748b; font-size: 9pt; }
+    table.rpt { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 9pt; }
+    table.rpt th { background: #193B68; color: #fff; text-align: left; padding: 6px 8px; font-weight: 600; }
+    table.rpt td { padding: 5px 8px; border-bottom: 1px solid #e2e8f0; }
+    table.rpt tr:nth-child(even) td { background: #f8fafc; }
+    thead { display: table-header-group; } tr { break-inside: avoid; }
+  </style>
+</head>
+<body>
+  {% include 'reportes/_encabezado.html' %}
+  {% block cuerpo %}{% endblock %}
+</body>
+</html>

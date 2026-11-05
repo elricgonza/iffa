@@ -1,24 +1,35 @@
 {% extends 'base.html' %}
+{% from '_icons.html' import icono %}
 {% block content %}
-<h1 class="text-2xl font-bold text-brand-800 mb-1">Bienvenido, {{ current_user.usuario }}</h1>
-<p class="text-sm text-slate-500 mb-6">
-  {% if scope == 'profesor' %}Se muestran únicamente los datos de sus materias asignadas.
-  {% elif scope == 'estudiante' %}Se muestran únicamente sus propios datos.
-  {% elif scope == 'none' %}Su cuenta no está vinculada a un registro de profesor/estudiante; contacte al administrador.
-  {% else %}Resumen general del instituto.{% endif %}
-</p>
-<div class="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
-  {% for label, total, url in tiles %}
-    <a href="{{ url }}" class="rounded-xl bg-white shadow-sm border p-4 hover:shadow-md hover:border-brand-300 transition">
-      <p class="text-3xl font-bold text-brand-600">{{ total }}</p>
+<!-- Bienvenida -->
+<section class="relative overflow-hidden rounded-2xl bg-gradient-to-br from-brand-700 to-brand-600 p-6 text-white shadow-sm sm:p-8">
+  <img src="{{ url_for('static', filename='img/logo-blanco.png') }}" alt="" class="pointer-events-none absolute -right-4 -bottom-6 h-48 w-auto opacity-10 sm:h-60">
+  <p class="text-sm text-brand-200">{{ INSTITUCION }} · {{ NOMBRE_INST }}</p>
+  <h1 class="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">Bienvenido, {{ current_user.usuario }}</h1>
+  <p class="mt-2 max-w-xl text-sm text-brand-100">
+    {% if scope == 'profesor' %}Se muestran únicamente los datos de sus materias asignadas.
+    {% elif scope == 'estudiante' %}Se muestran únicamente sus propios datos.
+    {% elif scope == 'none' %}Su cuenta no está vinculada a un registro de profesor/estudiante; contacte al administrador.
+    {% else %}Resumen general del instituto{% if gestion_activa %} · gestión {{ gestion_activa.gestion }}{% endif %}.{% endif %}
+  </p>
+</section>
+
+<!-- Indicadores -->
+<div class="mt-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
+  {% for label, total, url, key in tiles %}
+    <a href="{{ url }}" class="card group p-4 transition hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md">
+      <span class="grid h-10 w-10 place-items-center rounded-lg bg-brand-50 text-brand-600 group-hover:bg-brand-600 group-hover:text-white transition-colors">{{ icono(key) }}</span>
+      <p class="mt-3 text-3xl font-bold tracking-tight text-brand-800">{{ total }}</p>
       <p class="text-sm text-slate-500">{{ label }}</p>
     </a>
   {% endfor %}
 </div>
+
 {% if pendientes %}
-  <div class="mt-5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 text-sm">
-    Hay <strong>{{ pendientes }}</strong> cuota(s) de pago pendiente(s).
-    <a class="underline font-medium" href="{{ url_for('crud.index', key='pago', estado='pendiente') }}">Ver pendientes</a>
+  <div class="mt-5 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+    {{ icono('pago', 'w-5 h-5 text-amber-600') }}
+    <span>Hay <strong>{{ pendientes }}</strong> cuota(s) de pago pendiente(s).</span>
+    <a class="font-medium underline" href="{{ url_for('crud.index', key='pago', estado='pendiente') }}">Ver pendientes</a>
   </div>
 {% endif %}
 {% endblock %}

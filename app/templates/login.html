@@ -1,31 +1,57 @@
 <!doctype html>
 <html lang="es" class="h-full">
 <head>
-  <title>Ingresar · IFALFA</title>
+  <title>Ingresar · {{ SIGLA }}</title>
   {% include '_head.html' %}
 </head>
-<body class="h-full bg-gradient-to-br from-brand-900 via-brand-700 to-brand-500 grid place-items-center p-4">
-  <div class="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-7">
-    <div class="text-center mb-6">
-      <div class="mx-auto w-14 h-14 rounded-xl bg-brand-600 grid place-items-center text-white text-xl font-bold">IF</div>
-      <h1 class="mt-3 text-xl font-bold text-brand-800">IFALFA</h1>
-      <p class="text-sm text-slate-500">Instituto de Educación Musical</p>
-    </div>
-    {% for cat, msg in get_flashed_messages(with_categories=true) %}
-      <div class="mb-4 rounded-lg px-3 py-2 text-sm bg-red-50 text-red-800 border border-red-200">{{ msg }}</div>
-    {% endfor %}
-    <form method="post" class="space-y-4">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label class="block text-sm font-medium">Usuario
-        <input name="usuario" required autofocus autocomplete="username"
-               class="mt-1 w-full rounded-lg border-slate-300 border px-3 py-2 focus:ring-2 focus:ring-brand-500 outline-none">
-      </label>
-      <label class="block text-sm font-medium">Contraseña
-        <input name="password" type="password" required autocomplete="current-password"
-               class="mt-1 w-full rounded-lg border-slate-300 border px-3 py-2 focus:ring-2 focus:ring-brand-500 outline-none">
-      </label>
-      <button class="w-full rounded-lg bg-brand-600 hover:bg-brand-700 text-white font-semibold py-2.5">Ingresar</button>
-    </form>
+<body class="h-full">
+  <div class="flex min-h-full">
+    <!-- Panel institucional -->
+    <section class="relative hidden w-1/2 max-w-3xl flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-brand-900 via-brand-700 to-brand-600 p-12 text-center text-white lg:flex">
+      <div class="absolute -right-24 -top-24 h-96 w-96 rounded-full bg-brand-500/20 blur-3xl"></div>
+      <div class="absolute -bottom-32 -left-20 h-96 w-96 rounded-full bg-brand-300/10 blur-3xl"></div>
+      <div class="relative">
+        <img src="{{ url_for('static', filename='img/logo-blanco.png') }}" alt="Logo {{ SIGLA }}" class="mx-auto h-40 w-auto drop-shadow-lg">
+        <p class="mt-8 text-sm font-medium uppercase tracking-[0.25em] text-brand-200">{{ INSTITUCION }}</p>
+        <h1 class="mt-2 text-4xl font-bold tracking-tight">{{ NOMBRE_INST }}</h1>
+        <div class="mx-auto mt-6 h-px w-24 bg-brand-500"></div>
+        <p class="mt-6 text-brand-100">{{ SISTEMA }}</p>
+      </div>
+    </section>
+
+    <!-- Formulario -->
+    <section class="flex flex-1 items-center justify-center bg-slate-50 p-6">
+      <div class="w-full max-w-sm">
+        <div class="mb-8 text-center lg:hidden">
+          <img src="{{ url_for('static', filename='img/logo-sm.png') }}" alt="Logo {{ SIGLA }}" class="mx-auto h-20 w-auto">
+          <p class="mt-3 text-xs font-medium uppercase tracking-widest text-slate-500">{{ INSTITUCION }}</p>
+          <h1 class="text-2xl font-bold text-brand-800">{{ NOMBRE_INST }}</h1>
+        </div>
+
+        <div class="card p-7">
+          <h2 class="text-xl font-bold text-brand-800">Iniciar sesión</h2>
+          <p class="page-sub mb-5">Ingrese con su usuario y contraseña.</p>
+          {% for cat, msg in get_flashed_messages(with_categories=true) %}
+            <div class="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{{ msg }}</div>
+          {% endfor %}
+          <form method="post" class="space-y-4" x-data="{ ver: false }">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="field-label">Usuario
+              <input name="usuario" required autofocus autocomplete="username" class="field">
+            </label>
+            <label class="field-label">Contraseña
+              <span class="relative block">
+                <input name="password" :type="ver ? 'text' : 'password'" required autocomplete="current-password" class="field pr-16">
+                <button type="button" @click="ver = !ver" class="absolute inset-y-0 right-2 my-auto h-7 rounded px-2 text-xs text-slate-500 hover:bg-slate-100"
+                        x-text="ver ? 'Ocultar' : 'Mostrar'">Mostrar</button>
+              </span>
+            </label>
+            <button class="btn btn-primary w-full py-2.5">Ingresar</button>
+          </form>
+        </div>
+        <p class="mt-6 text-center text-xs text-slate-400">© {{ now_year }} {{ INSTITUCION }} {{ NOMBRE_INST }}</p>
+      </div>
+    </section>
   </div>
 </body>
 </html>

@@ -2,8 +2,8 @@
 {% block title %}Fechas Transcripción Notas{% endblock %}
 {% block content %}
 <div class="mb-5">
-  <h1 class="text-xl font-bold text-brand-800">Fechas Transcripción Notas</h1>
-  <p class="text-sm text-slate-500 mt-1">
+  <h1 class="page-title">Fechas Transcripción Notas</h1>
+  <p class="page-sub max-w-3xl">
     Defina para cada período si la transcripción de calificaciones está habilitada y entre qué fechas
     (inicio y final, ambas inclusive). Fuera del rango, o con el período restringido, los campos de la nota
     quedan bloqueados para profesores y transcriptores. El rol Administrador no tiene esta restricción.
@@ -22,7 +22,7 @@
   <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
     {% for k, label in periodos %}
       {% set abierto, texto = estados[k] %}
-      <section class="rounded-xl bg-white border shadow-sm p-4 {{ 'border-red-300' if errores.get(k) }}"
+      <section class="card p-4 {{ 'border-red-300' if errores.get(k) }}"
                x-data='{ on: {{ "true" if cfg["habilitar_" ~ k] else "false" }} }'>
         <div class="flex items-start justify-between gap-2 mb-3">
           <h2 class="font-semibold text-brand-800">{{ label }}</h2>
@@ -37,11 +37,11 @@
         <div class="grid grid-cols-2 gap-3" :class="on ? '' : 'opacity-60'">
           <label class="block text-xs font-medium text-slate-600">Fecha inicio
             <input type="date" name="transcripcion_{{ k }}_inicio" value="{{ cfg['transcripcion_' ~ k ~ '_inicio'] or '' }}"
-                   class="mt-1 w-full rounded-lg border border-slate-300 px-2 py-2 text-sm focus:ring-2 focus:ring-brand-500 outline-none">
+                   class="field px-2">
           </label>
           <label class="block text-xs font-medium text-slate-600">Fecha final
             <input type="date" name="transcripcion_{{ k }}_final" value="{{ cfg['transcripcion_' ~ k ~ '_final'] or '' }}"
-                   class="mt-1 w-full rounded-lg border border-slate-300 px-2 py-2 text-sm focus:ring-2 focus:ring-brand-500 outline-none">
+                   class="field px-2">
           </label>
         </div>
         {% if errores.get(k) %}<p class="mt-2 text-xs text-red-600">{{ errores[k] }}</p>{% endif %}
@@ -49,7 +49,7 @@
     {% endfor %}
   </div>
   <div class="flex justify-end">
-    <button class="rounded-lg bg-brand-600 hover:bg-brand-700 text-white px-6 py-2.5 text-sm font-medium">Guardar fechas</button>
+    <button class="btn btn-primary px-6 py-2.5">Guardar fechas</button>
   </div>
 </form>
 {% endblock %}

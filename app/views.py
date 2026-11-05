@@ -120,7 +120,7 @@ def inicio():
                           ("nota", "Calificaciones"), ("pago", "Pagos")):
         r = RESOURCES[key]
         if current_user.has_perm(r.perm("ver")):
-            tiles.append((etiqueta, r.build_query({}, current_user).count(), url_for("crud.index", key=key)))
+            tiles.append((etiqueta, r.build_query({}, current_user).count(), url_for("crud.index", key=key), key))
     pendientes = None
     if current_user.has_perm("pago_ver"):
         pendientes = RESOURCES["pago"].build_query({}, current_user).filter(Pago.pagado.is_(False)).count()

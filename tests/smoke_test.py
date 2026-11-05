@@ -508,8 +508,8 @@ if True:
     clientes = [admin, p1, a1, tr, sr, cn]  # Administrador, Profesor, Estudiante, Transcriptor, sin roles, Consulta
     ok(all(c.get("/cambiar-password").status_code == 200 for c in clientes),
        "cambiar contraseña: disponible para todos los roles (incluso un usuario sin roles)")
-    ok(all("Cambiar contraseña" in c.get("/").get_data(as_text=True) for c in clientes),
-       "cambiar contraseña: opción de menú visible para todos")
+    ok(all("Cambiar contraseña" in c.get("/perfil").get_data(as_text=True) for c in clientes),
+       "cambiar contraseña: accesible para todos desde «Mi perfil»")
     ok(app.test_client().get("/cambiar-password").status_code == 302, "cambiar contraseña: exige sesión iniciada")
 
     cp = lambda c, **d: c.post("/cambiar-password", data=d)
@@ -533,6 +533,64 @@ if True:
     r = crear_usuario("pwdebil", clave="abcdefgh")
     ok("letras y números" in t(r) and db_(lambda: Usuario.query.filter_by(usuario="pwdebil").count()) == 0,
        "la administración de usuarios aplica la misma política")
+
+    # ---- Presentación: logo institucional, estructura HTML y plantillas de reportes
+    from html.parser import HTMLParser
+
+    class Contador(HTMLParser):
+        VOID = {"meta", "link", "img", "input", "br", "hr", "path", "circle", "rect", "source"}
+
+        def __init__(self):
+            super().__init__()
+            self.pila, self.error = [], None
+
+        def handle_starttag(self, tag, attrs):
+            if tag not in self.VOID:
+                self.pila.append(tag)
+
+        def handle_startendtag(self, tag, attrs):
+            pass
+
+        def handle_endtag(self, tag):
+            if tag in self.VOID:
+                return
+            if not self.pila or self.pila[-1] != tag:
+                self.error = self.error or f"</{tag}> inesperado (abierto: {self.pila[-3:]})"
+            else:
+                self.pila.pop()
+
+    def bien_formado(html):
+        c = Contador()
+        c.feed(html)
+        return c.error is None and not c.pila, (c.error or c.pila)
+
+    for nombre in ("logo.png", "logo-sm.png", "logo-blanco.png", "favicon.png"):
+        r = admin.get(f"/static/img/{nombre}")
+        ok(r.status_code == 200 and r.data[:8] == b"\x89PNG\r\n\x1a\n", f"logo: /static/img/{nombre} se sirve")
+    import struct
+    ihdr = admin.get("/static/img/logo.png").data[16:24]
+    ok(struct.unpack(">II", ihdr) == (447, 447), "logo original conservado (447x447, sin modificar)")
+    login_html = app.test_client().get("/login").get_data(as_text=True)
+    ok("logo-blanco.png" in login_html and "logo-sm.png" in login_html and "Luis Felipe Arce" in login_html
+       and "Instituto de Formación Artística" in login_html, "login: logo e identidad institucional")
+    inicio = admin.get("/").get_data(as_text=True)
+    ok("logo-blanco.png" in inicio and "favicon.png" in inicio and "print-only" in inicio
+       and "Instituto de Formación Artística" in inicio and "Sistema de Gestión Académica" in inicio,
+       "layout: logo en el menú, favicon, encabezado de impresión e identidad")
+    for url in ("/login", "/", "/perfil", "/cambiar-password", "/config/notas", "/alumno/", "/nota/", "/asignado/", "/inscrito/",
+                "/curso/", "/gestion/", "/usuario/"):
+        cli = app.test_client() if url == "/login" else admin
+        good, det = bien_formado(cli.get(url).get_data(as_text=True))
+        ok(good, f"HTML bien formado: {url} {'' if good else det}")
+    for url in ("/alumno/nuevo", "/inscrito/nuevo", "/asignado/nuevo", "/curso/1/editar", "/asignado/masivo"):
+        good, det = bien_formado(admin.get(url, headers=HXH).get_data(as_text=True))
+        ok(good, f"HTML bien formado (modal): {url} {'' if good else det}")
+    with app.test_request_context("/"):
+        from flask import render_template_string
+        rep = render_template_string("{% extends 'reportes/_base.html' %}{% block cuerpo %}<p>cuerpo</p>{% endblock %}",
+                                     titulo_reporte="Listado de prueba", gestion_activa=None, fecha_reporte="01/01/2026")
+        ok("data:image/png;base64," in rep and "Luis Felipe Arce" in rep and "Listado de prueba" in rep and "<p>cuerpo</p>" in rep,
+           "plantilla base de reportes: logo incrustado y encabezado institucional")
 
     # integridad
     r = admin.post("/inscrito/1/eliminar", headers={"HX-Request": "true"})

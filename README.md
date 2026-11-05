@@ -148,6 +148,15 @@ confirmación, indicador de requisitos en pantalla y opción de mostrar/ocultar.
 contraseña actual se bloquea 5 minutos (por usuario), y todo queda en la auditoría. La misma política se aplica
 cuando el Administrador crea o cambia contraseñas en *Usuarios*.
 
+### Identidad visual y reportes
+La interfaz usa la paleta institucional (azul marino `#193B68` y cian `#0390C6`, escala `brand-*` en
+`app/templates/_head.html`), tipografía Inter y componentes comunes (`btn`, `card`, `field`, `badge`) definidos
+en ese mismo archivo. El logo está en `app/static/img/` (`logo.png` original, `logo-sm.png`, `logo-blanco.png` para
+fondos oscuros y `favicon.png`) y el nombre en `app/branding.py`.
+**Reportes:** cualquier pantalla se imprime con encabezado institucional (logo, nombre y gestión; Ctrl+P). Para
+reportes nuevos (HTML/PDF) extienda `app/templates/reportes/_base.html` (`{% block cuerpo %}`), que ya incluye el
+logo incrustado (`logo_data_uri()`) y el encabezado; para PDF/Excel generados por código use `branding.logo_path()`.
+
 ## 7. Seguridad
 
 Contraseñas con hash (werkzeug), CSRF en todos los POST, cookies HttpOnly/SameSite, límite de 5 intentos de login

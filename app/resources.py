@@ -561,6 +561,7 @@ Resource(
     validate=_validar_asignado, before_save=_before_save_asignado,
     after_save=_after_save_asignado, before_delete=_before_delete_asignado,
     toolbar="crud/_toolbar_asignado.html",
+    menu="Asignaciones",
     can_create=lambda user: hay_gestion_activa(),  # «+ Nuevo» solo con gestión vigente
     can_edit=lambda a, user: a.id_curso in cursos_vigentes_ids(),
     can_delete=lambda a, user: a.id_curso in cursos_vigentes_ids(),

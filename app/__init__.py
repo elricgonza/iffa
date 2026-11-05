@@ -54,6 +54,9 @@ def create_app():
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
+    from . import branding
+    app.jinja_env.globals.update(SIGLA=branding.SIGLA, INSTITUCION=branding.INSTITUCION, NOMBRE_INST=branding.NOMBRE,
+                                 SISTEMA=branding.SISTEMA, logo_data_uri=branding.logo_data_uri)
     app.register_blueprint(acad_bp)
     app.register_blueprint(cfg_bp)
     app.jinja_env.globals["estado_notas"] = config_notas.resumen
@@ -66,14 +69,15 @@ def create_app():
         if current_user.is_authenticated:
             activas = Gestion.query.filter(Gestion.activo.is_(True)).order_by(Gestion.gestion.desc(), Gestion.id.desc()).all()
             for titulo, claves in GRUPOS_MENU:
-                items = [(RESOURCES[k].title, url_for("crud.index", key=k), k) for k in claves
+                items = [(RESOURCES[k].menu, url_for("crud.index", key=k), k) for k in claves
                          if current_user.has_perm(RESOURCES[k].perm("ver"))]
                 if titulo == "Administración" and current_user.has_role("Administrador"):
                     items.insert(0, ("Fechas Transcripción Notas", url_for("cfgnotas.notas"), "cfg_notas"))
                 if items:
                     grupos.append((titulo, items))
         # gestion_activa: la gestión vigente (si por datos antiguos hubiera varias, la más reciente)
-        return {"menu": grupos, "gestion_activa": activas[0] if activas else None, "gestiones_activas": len(activas)}
+        from datetime import date
+        return {"now_year": date.today().year, "menu": grupos, "gestion_activa": activas[0] if activas else None, "gestiones_activas": len(activas)}
 
     @app.after_request
     def _headers(resp):

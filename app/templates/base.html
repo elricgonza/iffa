@@ -1,7 +1,8 @@
+{% from '_icons.html' import icono %}
 <!doctype html>
-<html lang="es" class="h-full bg-slate-100">
+<html lang="es" class="h-full">
 <head>
-  <title>{% block title %}Inicio{% endblock %} · IFALFA</title>
+  <title>{% block title %}Inicio{% endblock %} · {{ SIGLA }}</title>
   {% include '_head.html' %}
   <script>
     // Buscador en vivo de un registro (p. ej. alumno): guarda id y etiqueta elegidos
@@ -31,89 +32,142 @@
     });
   </script>
 </head>
-<body class="h-full text-slate-800" x-data="app()" @toast.window="push($event.detail)"
+<body class="h-full" x-data="app()" @toast.window="push($event.detail)"
       hx-headers='{"X-CSRFToken": "{{ csrf_token() }}"}'>
 
-  <!-- Barra superior (móvil) -->
-  <header class="md:hidden fixed top-0 inset-x-0 z-30 h-14 bg-brand-600 text-white flex items-center px-3 gap-3 shadow">
-    <button @click="sidebar = !sidebar" aria-label="Menú" class="p-2 rounded hover:bg-brand-700">
-      <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
-    </button>
-    <span class="font-semibold tracking-wide">IFALFA</span>
-    {% if current_user.is_authenticated %}
-    <a href="{{ url_for('crud.index', key='gestion') if current_user.has_perm('gestion_ver') else '#' }}"
-       class="ml-auto text-xs rounded-full px-3 py-1 {{ 'bg-white/15' if gestion_activa else 'bg-amber-400 text-amber-950 font-semibold' }}"
-       title="Gestión académica activa">
-      {% if gestion_activa %}Gestión {{ gestion_activa.gestion }}{% else %}Sin gestión activa{% endif %}
-    </a>
-    {% endif %}
-  </header>
+  <div x-show="sidebar" x-cloak class="no-print fixed inset-0 z-30 bg-slate-900/50 backdrop-blur-sm lg:hidden" @click="sidebar = false"></div>
 
-  <div x-show="sidebar" x-cloak class="fixed inset-0 z-30 bg-black/40 md:hidden" @click="sidebar = false"></div>
-
-  <!-- Menú lateral -->
-  <aside class="fixed z-40 inset-y-0 left-0 w-64 bg-brand-800 text-slate-200 flex flex-col transform transition-transform md:translate-x-0"
+  <!-- ============ Menú lateral ============ -->
+  <aside class="fixed inset-y-0 left-0 z-40 flex w-72 flex-col bg-gradient-to-b from-brand-800 to-brand-900 text-slate-300 shadow-xl
+                transform transition-transform lg:translate-x-0"
          :class="sidebar ? 'translate-x-0' : '-translate-x-full'">
-    <a href="{{ url_for('main.inicio') }}" class="h-16 flex items-center gap-3 px-5 bg-brand-900 border-b border-white/10">
-      <span class="w-9 h-9 rounded-lg bg-brand-500 grid place-items-center font-bold text-white">IF</span>
-      <span class="leading-tight"><span class="block font-bold text-white">IFALFA</span>
-      <span class="block text-[11px] text-slate-400">Instituto de Educación Musical</span></span>
+    <a href="{{ url_for('main.inicio') }}" class="flex items-center gap-3 px-5 py-5 border-b border-white/10">
+      <img src="{{ url_for('static', filename='img/logo-blanco.png') }}" alt="Logo {{ SIGLA }}" class="h-11 w-auto">
+      <span class="leading-tight min-w-0">
+        <span class="block text-[11px] font-medium text-brand-200 truncate">{{ INSTITUCION }}</span>
+        <span class="block text-base font-semibold text-white truncate">{{ NOMBRE_INST }}</span>
+      </span>
     </a>
-    <nav class="flex-1 overflow-y-auto py-3 text-sm">
-      <a href="{{ url_for('main.inicio') }}" class="block px-5 py-2 hover:bg-white/10 {{ 'bg-white/10 font-semibold text-white' if request.endpoint == 'main.inicio' }}">Inicio</a>
+
+    <nav class="flex-1 overflow-y-auto px-3 py-4 text-sm" aria-label="Menú principal">
+      {% set activo = 'bg-white/10 text-white font-semibold shadow-inner' %}
+      <a href="{{ url_for('main.inicio') }}"
+         class="group flex items-center gap-3 rounded-lg px-3 py-2 hover:bg-white/10 hover:text-white {{ activo if request.endpoint == 'main.inicio' else '' }}">
+        {{ icono('inicio') }}<span>Inicio</span>
+      </a>
       {% for titulo, items in menu %}
-        <p class="px-5 pt-4 pb-1 text-[11px] uppercase tracking-wider text-slate-400">{{ titulo }}</p>
+        <p class="mt-5 mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-brand-300/80">{{ titulo }}</p>
         {% for label, url, key in items %}
+          {% set es_activo = (request.view_args and request.view_args.get('key') == key) or (key == 'cfg_notas' and request.endpoint == 'cfgnotas.notas') %}
           <a href="{{ url }}" @click="sidebar = false"
-             class="block px-5 py-2 hover:bg-white/10 {{ 'bg-brand-600 text-white font-semibold' if (request.view_args and request.view_args.get('key') == key) or (key == 'cfg_notas' and request.endpoint == 'cfgnotas.notas') }}">{{ label }}</a>
+             class="group relative flex items-center gap-3 rounded-lg px-3 py-2 hover:bg-white/10 hover:text-white {{ activo if es_activo else '' }}">
+            {% if es_activo %}<span class="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r bg-brand-500"></span>{% endif %}
+            {{ icono(key) }}<span class="truncate">{{ label }}</span>
+          </a>
         {% endfor %}
       {% endfor %}
     </nav>
-    <div class="p-4 border-t border-white/10 text-sm">
-      {% if current_user.is_authenticated %}
-      <div class="mb-3 rounded-lg px-3 py-2 {{ 'bg-brand-600/60 border border-brand-500/40' if gestion_activa else 'bg-amber-400/20 border border-amber-300/40' }}"
-           title="Gestión académica activa">
-        <p class="text-[10px] uppercase tracking-wider text-slate-300">Gestión activa</p>
-        {% if gestion_activa %}
-          <p class="text-sm font-semibold text-white truncate">{{ gestion_activa.gestion }} · {{ gestion_activa.plan }}</p>
-          {% if gestiones_activas > 1 %}<p class="text-[11px] text-amber-300">⚠ Hay {{ gestiones_activas }} gestiones activas</p>{% endif %}
-        {% else %}
-          <p class="text-sm font-semibold text-amber-300">Sin gestión activa</p>
-        {% endif %}
-      </div>
-      {% endif %}
-      <a href="{{ url_for('auth.perfil') }}" class="block font-medium text-white truncate hover:underline">{{ current_user.usuario }}</a>
-      <p class="text-xs text-slate-400 truncate mb-2">{{ current_user.roles|join(', ') }}</p>
-      <!--<a href="{{ url_for('auth.cambiar_password') }}"
-        class="block text-xs px-3 py-2 mb-2 rounded hover:bg-white/10 {{ 'bg-white/10 text-white font-semibold' if request.endpoint == 'auth.cambiar_password' else 'text-slate-300' }}">Cambiar contraseña</a>-->
-      <form method="post" action="{{ url_for('auth.logout') }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button class="w-full text-left text-xs px-3 py-2 rounded bg-white/10 hover:bg-white/20">Cerrar sesión</button>
-      </form>
-    </div>
+
+    <div class="border-t border-white/10 px-5 py-3 text-[11px] text-brand-300/70">{{ SISTEMA }}</div>
   </aside>
 
-  <!-- Contenido -->
-  <main class="md:ml-64 pt-14 md:pt-0 min-h-full">
-    <div class="p-4 md:p-6 max-w-7xl mx-auto">
-      {% for cat, msg in get_flashed_messages(with_categories=true) %}
-        <div class="mb-4 rounded-lg px-4 py-3 text-sm {{ 'bg-red-50 text-red-800 border border-red-200' if cat == 'error' else 'bg-emerald-50 text-emerald-800 border border-emerald-200' }}">{{ msg }}</div>
-      {% endfor %}
-      {% block content %}{% endblock %}
-    </div>
-  </main>
+  <!-- ============ Contenido ============ -->
+  <div class="lg:pl-72 min-h-full flex flex-col">
+    <header class="app-topbar sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-slate-200 bg-white/95 px-4 backdrop-blur sm:px-6">
+      <button @click="sidebar = !sidebar" aria-label="Abrir menú" class="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden">
+        <svg class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <img src="{{ url_for('static', filename='img/logo-sm.png') }}" alt="" class="h-9 w-auto lg:hidden">
+
+      {% if current_user.is_authenticated %}
+      <div class="ml-auto flex items-center gap-3">
+        <!-- Gestión activa -->
+        <a href="{{ url_for('crud.index', key='gestion') if current_user.has_perm('gestion_ver') else '#' }}"
+           class="flex items-center gap-2 whitespace-nowrap rounded-full border px-3 py-1.5 text-xs
+                  {{ 'border-brand-200 bg-brand-50 text-brand-800' if gestion_activa else 'border-amber-300 bg-amber-50 text-amber-900' }}"
+           title="Gestión académica activa">
+          {{ icono('gestion', 'w-4 h-4') }}
+          {% if gestion_activa %}
+            <span class="hidden sm:inline text-brand-600">Gestión activa</span>
+            <span class="sm:hidden font-semibold">Gestión {{ gestion_activa.gestion }}</span>
+            <span class="hidden sm:inline font-semibold">{{ gestion_activa.gestion }} · {{ gestion_activa.plan }}</span>
+            {% if gestiones_activas > 1 %}<span class="text-amber-600" title="Hay más de una gestión activa">⚠ {{ gestiones_activas }}</span>{% endif %}
+          {% else %}
+            <span class="font-semibold">Sin gestión activa</span>
+          {% endif %}
+        </a>
+
+        <!-- Usuario -->
+        <div class="relative" x-data="{ abierto: false }" @click.outside="abierto = false" @keydown.escape.window="abierto = false">
+          <button @click="abierto = !abierto" class="flex items-center gap-2.5 rounded-full py-1 pl-1 pr-2 hover:bg-slate-100" aria-haspopup="true">
+            <span class="grid h-9 w-9 flex-shrink-0 place-items-center rounded-full bg-brand-600 text-sm font-semibold uppercase text-white">{{ (current_user.usuario or '?')[:2] }}</span>
+            <span class="hidden text-left leading-tight sm:block">
+              <span class="block text-sm font-semibold text-slate-800">{{ current_user.usuario }}</span>
+              <span class="block text-[11px] text-slate-500">{{ current_user.roles|join(', ') or 'Sin roles' }}</span>
+            </span>
+            <svg class="hidden h-4 w-4 text-slate-400 sm:block" viewBox="0 0 20 20" fill="currentColor"><path d="M5.5 7.5L10 12l4.5-4.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div x-show="abierto" x-cloak x-transition.origin.top.right
+               class="absolute right-0 mt-2 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+            <div class="border-b border-slate-100 px-4 py-2 sm:hidden">
+              <p class="text-sm font-semibold">{{ current_user.usuario }}</p>
+              <p class="text-xs text-slate-500">{{ current_user.roles|join(', ') or 'Sin roles' }}</p>
+            </div>
+            <a href="{{ url_for('auth.perfil') }}" class="flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">
+              {{ icono('usuario', 'w-4 h-4') }} Mi perfil</a>
+            <form method="post" action="{{ url_for('auth.logout') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+                Cerrar sesión</button>
+            </form>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+    </header>
+
+    <main class="app-main flex-1">
+      <div class="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <!-- Encabezado institucional (solo al imprimir) -->
+        <div class="print-only mb-4 border-b-2 border-brand-600 pb-3">
+          <div class="flex items-center gap-4">
+            <img src="{{ url_for('static', filename='img/logo-sm.png') }}" alt="" style="height:54px">
+            <div>
+              <p class="text-xs text-slate-500">{{ INSTITUCION }}</p>
+              <p class="text-lg font-bold text-brand-800">{{ NOMBRE_INST }}</p>
+            </div>
+            <div class="ml-auto text-right text-xs text-slate-500">
+              {% if gestion_activa %}Gestión {{ gestion_activa.gestion }}<br>{% endif %}
+              {{ SISTEMA }}
+            </div>
+          </div>
+        </div>
+
+        {% for cat, msg in get_flashed_messages(with_categories=true) %}
+          <div class="no-print mb-4 flex items-start gap-2 rounded-lg border px-4 py-3 text-sm
+                      {{ 'border-red-200 bg-red-50 text-red-800' if cat == 'error' else 'border-emerald-200 bg-emerald-50 text-emerald-800' }}">{{ msg }}</div>
+        {% endfor %}
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+
+    <footer class="app-footer border-t border-slate-200 bg-white px-4 py-3 text-center text-xs text-slate-500 sm:px-6">
+      © {{ now_year }} {{ INSTITUCION }} {{ NOMBRE_INST }} · {{ SISTEMA }}
+    </footer>
+  </div>
 
   <!-- Ventana modal (formularios HTMX) -->
-  <div x-show="modal" x-cloak class="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4"
+  <div id="modal-wrap" x-show="modal" x-cloak class="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4"
        @keydown.escape.window="modal = false" @close-modal.window="modal = false">
-    <div class="absolute inset-0 bg-slate-900/50" @click="modal = false"></div>
-    <div id="modal-body" class="relative w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto bg-white rounded-t-2xl sm:rounded-2xl shadow-xl"></div>
+    <div class="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" @click="modal = false"></div>
+    <div id="modal-body" class="relative max-h-[92vh] w-full overflow-y-auto rounded-t-2xl bg-white shadow-2xl sm:max-w-2xl sm:rounded-2xl"></div>
   </div>
 
   <!-- Avisos -->
-  <div class="fixed z-[60] bottom-4 right-4 left-4 sm:left-auto sm:w-96 space-y-2 pointer-events-none">
+  <div class="app-toasts pointer-events-none fixed bottom-4 left-4 right-4 z-[60] space-y-2 sm:left-auto sm:w-96">
     <template x-for="t in toasts" :key="t.id">
-      <div x-transition class="pointer-events-auto rounded-lg px-4 py-3 text-sm shadow-lg text-white"
+      <div x-transition class="pointer-events-auto flex items-center gap-2 rounded-lg px-4 py-3 text-sm text-white shadow-lg"
            :class="t.type === 'error' ? 'bg-red-600' : 'bg-emerald-600'" x-text="t.msg"></div>
     </template>
   </div>

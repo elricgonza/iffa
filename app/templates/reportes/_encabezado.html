@@ -1,0 +1,18 @@
+{# Encabezado institucional para reportes (HTML/PDF/impresión). Autónomo: no depende de Tailwind.
+   Uso:  {% include 'reportes/_encabezado.html' %}   Variables opcionales: titulo_reporte, subtitulo_reporte #}
+<header class="rpt-encabezado">
+  <img class="rpt-logo" src="{{ logo_data_uri('color') }}" alt="Logo {{ SIGLA }}">
+  <div class="rpt-inst">
+    <div class="rpt-inst-linea">{{ INSTITUCION }}</div>
+    <div class="rpt-inst-nombre">{{ NOMBRE_INST }}</div>
+    <div class="rpt-inst-sistema">{{ SISTEMA }}</div>
+  </div>
+  <div class="rpt-meta">
+    {% if gestion_activa %}Gestión {{ gestion_activa.gestion }}<br>{% endif %}
+    {{ fecha_reporte or '' }}
+  </div>
+</header>
+{% if titulo_reporte %}
+  <h1 class="rpt-titulo">{{ titulo_reporte }}</h1>
+  {% if subtitulo_reporte %}<p class="rpt-subtitulo">{{ subtitulo_reporte }}</p>{% endif %}
+{% endif %}

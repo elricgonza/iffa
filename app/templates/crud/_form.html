@@ -2,16 +2,22 @@
 {% macro hx_hijo(r, hijos) %}{% if hijos %}hx-get="{{ url_for('crud.opciones', key=r.key, fname=hijos[0].name) }}"
   hx-target="#f_{{ hijos[0].name }}" hx-swap="innerHTML" hx-trigger="change"
   {% if hijos[0].dep_include %}hx-include="{% for n in hijos[0].dep_include %}#f_{{ n }}{% if not loop.last %}, {% endif %}{% endfor %}"{% endif %}{% endif %}{% endmacro %}
-<form hx-post="{{ url_for('crud.guardar', key=r.key) }}" hx-target="#modal-body" hx-swap="innerHTML" class="p-5">
+<form hx-post="{{ url_for('crud.guardar', key=r.key) }}" hx-target="#modal-body" hx-swap="innerHTML">
   <input type="hidden" name="id" value="{{ obj.id if obj else '' }}">
-  <div class="flex items-start justify-between mb-4">
-    <h2 class="text-lg font-bold text-brand-800">{{ 'Editar' if obj else 'Nuevo' }} · {{ r.singular }}</h2>
-    <button type="button" @click="modal = false" class="text-slate-400 hover:text-slate-700 text-2xl leading-none" aria-label="Cerrar">&times;</button>
+  <div class="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-4">
+    <div>
+      <p class="text-xs font-medium uppercase tracking-wide text-brand-500">{{ 'Editar' if obj else 'Nuevo registro' }}</p>
+      <h2 class="text-lg font-bold text-brand-800">{{ r.singular }}</h2>
+    </div>
+    <button type="button" @click="modal = false" class="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Cerrar">
+      <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
   </div>
+  <div class="px-5 py-5">
   {% if errors.get('__all__') %}
-    <div class="mb-4 rounded-lg px-3 py-2 text-sm bg-red-50 text-red-800 border border-red-200">{{ errors['__all__'] }}</div>
+    <div class="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{{ errors['__all__'] }}</div>
   {% endif %}
-  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  <div class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
     {% for f in r.fields %}
       {% set err = errors.get(f.name) %}
       {% set wide = f.type in ('textarea', 'multiselect') or f.help %}
@@ -19,24 +25,24 @@
         {% if f.create_only and obj and f.virtual %}
           {# campo auxiliar solo de alta: no se muestra al editar #}
         {% elif f.create_only and obj %}
-          <p class="block text-sm font-medium text-slate-700">{{ f.label }}</p>
-          <p class="mt-1 px-3 py-2 rounded-lg bg-slate-50 border text-sm text-slate-600">
+          <p class="field-label">{{ f.label }}</p>
+          <p class="mt-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
             {% if f.type == 'search' %}{{ r.search_label(f, values[f.name]) }}
             {% elif f.depends_on %}{{ r.related_label(obj, f) }}
             {% elif f.options %}{% for v, l in f.options() if v|string == values[f.name] %}{{ l }}{% endfor %}
             {% else %}{{ values[f.name] }}{% endif %}
           </p>
         {% elif f.type == 'bool' %}
-          <label class="flex items-center gap-2 text-sm font-medium text-slate-700 pt-6">
+          <label class="flex items-center gap-2 pt-6 text-sm font-medium text-slate-700">
             <input type="checkbox" name="{{ f.name }}" {{ 'checked' if values[f.name] }}
                    class="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"> {{ f.label }}
           </label>
-          {% if err %}<p class="mt-1 text-xs text-red-600">{{ err }}</p>
-          {% elif f.help %}<p class="mt-1 text-xs text-slate-500">{{ f.help }}</p>{% endif %}
+          {% if err %}<p class="field-error">{{ err }}</p>
+          {% elif f.help %}<p class="field-help">{{ f.help }}</p>{% endif %}
         {% else %}
-          <label for="f_{{ f.name }}" class="block text-sm font-medium text-slate-700">{{ f.label }}{% if f.required or (f.req_create and not obj) %} <span class="text-red-500">*</span>{% endif %}</label>
+          <label for="f_{{ f.name }}" class="field-label">{{ f.label }}{% if f.required or (f.req_create and not obj) %} <span class="text-red-500">*</span>{% endif %}</label>
           {% set bloqueo = r.bloqueo(f, obj) %}
-          {% set cls = 'mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 outline-none ' ~ ('bg-slate-100 text-slate-400 cursor-not-allowed ' if bloqueo else 'bg-white ') ~ ('border-red-400' if err else 'border-slate-300') %}
+          {% set cls = 'field ' ~ ('bg-slate-100 text-slate-400 cursor-not-allowed ' if bloqueo else '') ~ ('!border-red-400 ' if err else '') %}
           {% if f.type == 'search' %}
             <div x-data='searchSelect({{ values[f.name]|tojson }}, {{ r.search_label(f, values[f.name])|tojson }})'>
               <input type="hidden" name="{{ f.name }}" :value="id">
@@ -73,7 +79,7 @@
               {% endfor %}
             </select>
           {% elif f.type == 'multiselect' %}
-            <div class="mt-1 max-h-44 overflow-y-auto rounded-lg border p-2 grid grid-cols-1 sm:grid-cols-2 gap-1 {{ 'border-red-400' if err else 'border-slate-300' }}">
+            <div class="mt-1 grid max-h-44 grid-cols-1 gap-1 overflow-y-auto rounded-lg border bg-white p-2 sm:grid-cols-2 {{ 'border-red-400' if err else 'border-slate-300' }}">
               {% for v, l in f.options() %}
                 <label class="flex items-center gap-2 text-sm py-0.5">
                   <input type="checkbox" name="{{ f.name }}" value="{{ v }}" {{ 'checked' if v|string in values[f.name] }}
@@ -93,14 +99,15 @@
                    {% if f.type == 'password' %}autocomplete="new-password"{% endif %}>
           {% endif %}
           {% if bloqueo %}<p class="mt-1 text-xs text-amber-700">Bloqueado: {{ bloqueo }}</p>
-          {% elif f.help and not err %}<p class="mt-1 text-xs text-slate-500">{{ f.help }}</p>{% endif %}
-          {% if err %}<p class="mt-1 text-xs text-red-600">{{ err }}</p>{% endif %}
+          {% elif f.help and not err %}<p class="field-help">{{ f.help }}</p>{% endif %}
+          {% if err %}<p class="field-error">{{ err }}</p>{% endif %}
         {% endif %}
       </div>
     {% endfor %}
   </div>
-  <div class="mt-6 flex justify-end gap-2">
-    <button type="button" @click="modal = false" class="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50">Cancelar</button>
-    <button class="rounded-lg bg-brand-600 hover:bg-brand-700 text-white px-5 py-2 text-sm font-medium">Guardar</button>
+  </div>
+  <div class="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3">
+    <button type="button" @click="modal = false" class="btn border border-slate-300 bg-white text-slate-700 hover:bg-slate-100">Cancelar</button>
+    <button class="btn btn-primary px-6">Guardar</button>
   </div>
 </form>

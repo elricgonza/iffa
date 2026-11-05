@@ -1,39 +1,40 @@
 {% set puede_editar = current_user.has_perm(r.perm('editar')) and r.allow_edit %}
 {% set puede_borrar = current_user.has_perm(r.perm('eliminar')) and r.allow_delete %}
-<div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+<div class="card overflow-hidden">
   <div class="overflow-x-auto">
     <table class="min-w-full text-sm">
-      <thead class="bg-slate-50 text-slate-600 text-left">
+      <thead class="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
         <tr>
           {% for c in r.columns %}
-            <th class="px-3 py-2.5 font-semibold whitespace-nowrap {{ 'hidden md:table-cell' if c.hide }}">{{ c.label }}</th>
+            <th class="whitespace-nowrap px-4 py-3 {{ 'hidden md:table-cell' if c.hide }}">{{ c.label }}</th>
           {% endfor %}
-          {% if puede_editar or puede_borrar %}<th class="px-3 py-2.5 w-1"></th>{% endif %}
+          {% if puede_editar or puede_borrar %}<th class="no-print w-1 px-4 py-3"></th>{% endif %}
         </tr>
       </thead>
-      <tbody class="divide-y">
+      <tbody class="divide-y divide-slate-100">
         {% for obj in pagination.items %}
-          <tr class="hover:bg-brand-50/60">
+          <tr class="transition-colors even:bg-slate-50/50 hover:bg-brand-50/60">
             {% for c in r.columns %}
-              <td class="px-3 py-2 {{ 'hidden md:table-cell' if c.hide }} {{ 'break-words max-w-xs' if c.label == 'Detalle' }}">
+              <td class="px-4 py-2.5 text-slate-700 {{ 'hidden md:table-cell' if c.hide }} {{ 'break-words max-w-xs' if c.label == 'Detalle' }}">
                 {% if c.kind == 'bool' %}
                   {% set v = r.raw(obj, c) %}
-                  <span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium {{ 'bg-emerald-100 text-emerald-800' if v else 'bg-slate-100 text-slate-600' }}">{{ 'Sí' if v else 'No' }}</span>
+                  {% if v is none %}<span class="text-slate-300" title="Sin dato">—</span>
+                  {% else %}<span class="badge {{ 'badge-ok' if v else 'badge-off' }}">{{ 'Sí' if v else 'No' }}</span>{% endif %}
                 {% else %}{{ r.display(obj, c) }}{% endif %}
               </td>
             {% endfor %}
             {% if puede_editar or puede_borrar %}
-              <td class="px-3 py-2 whitespace-nowrap text-right">
+              <td class="no-print whitespace-nowrap px-4 py-2.5 text-right">
                 {% if not r.puede_editar(obj, current_user) and puede_editar and r._can_edit %}
-                  <span class="text-xs text-slate-400" title="Solo se puede editar lo que corresponde a la gestión vigente">Solo lectura</span>
+                  <span class="badge badge-off" title="Solo se puede editar lo que corresponde a la gestión vigente">Solo lectura</span>
                 {% endif %}
                 {% if r.puede_editar(obj, current_user) %}
-                  <button class="text-brand-600 hover:underline mr-3"
+                  <button class="btn btn-ghost btn-sm text-brand-600 hover:bg-brand-50"
                           hx-get="{{ url_for('crud.editar', key=r.key, oid=obj.id) }}" hx-target="#modal-body"
                           hx-swap="innerHTML" @click="modal = true">Editar</button>
                 {% endif %}
                 {% if r.puede_eliminar(obj, current_user) %}
-                  <button class="text-red-600 hover:underline"
+                  <button class="btn btn-ghost btn-sm text-red-600 hover:bg-red-50"
                           hx-post="{{ url_for('crud.eliminar', key=r.key, oid=obj.id) }}"
                           hx-confirm="¿Eliminar este registro? Esta acción no se puede deshacer."
                           hx-target="#table-wrap" hx-swap="innerHTML">Eliminar</button>
@@ -42,23 +43,25 @@
             {% endif %}
           </tr>
         {% else %}
-          <tr><td colspan="{{ r.columns|length + 1 }}" class="px-3 py-10 text-center text-slate-400">Sin registros</td></tr>
+          <tr><td colspan="{{ r.columns|length + 1 }}" class="px-4 py-14 text-center text-slate-400">
+            <svg class="mx-auto mb-2 h-8 w-8 text-slate-300" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20 13V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v6m16 0v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-4m16 0h-5l-1 2h-4l-1-2H4"/></svg>
+            Sin registros</td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
-  <div class="flex items-center justify-between gap-2 px-3 py-2.5 border-t bg-slate-50 text-xs text-slate-600">
+  <div class="no-print flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
     <span>{{ pagination.total }} registro(s) · página {{ pagination.page }} de {{ pagination.pages or 1 }}</span>
     <span class="flex gap-2">
       {% if pagination.has_prev %}
         <a href="{{ url_for('crud.index', key=r.key, **dict(args.to_dict(), page=pagination.prev_num)) }}"
            hx-get="{{ url_for('crud.index', key=r.key, **dict(args.to_dict(), page=pagination.prev_num)) }}"
-           hx-target="#table-wrap" hx-push-url="true" class="px-3 py-1.5 rounded border bg-white hover:bg-slate-100">‹ Anterior</a>
+           hx-target="#table-wrap" hx-push-url="true" class="btn btn-sm border border-slate-300 bg-white text-slate-700 hover:bg-slate-100">‹ Anterior</a>
       {% endif %}
       {% if pagination.has_next %}
         <a href="{{ url_for('crud.index', key=r.key, **dict(args.to_dict(), page=pagination.next_num)) }}"
            hx-get="{{ url_for('crud.index', key=r.key, **dict(args.to_dict(), page=pagination.next_num)) }}"
-           hx-target="#table-wrap" hx-push-url="true" class="px-3 py-1.5 rounded border bg-white hover:bg-slate-100">Siguiente ›</a>
+           hx-target="#table-wrap" hx-push-url="true" class="btn btn-sm border border-slate-300 bg-white text-slate-700 hover:bg-slate-100">Siguiente ›</a>
       {% endif %}
     </span>
   </div>

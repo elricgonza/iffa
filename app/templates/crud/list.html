@@ -1,12 +1,20 @@
 {% extends 'base.html' %}
+{% from '_icons.html' import icono %}
 {% block title %}{{ r.title }}{% endblock %}
 {% block content %}
-<div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-  <h1 class="text-xl font-bold text-brand-800">{{ r.title }}</h1>
-  <div class="flex flex-wrap gap-2">
+<!-- Encabezado de la página -->
+<div class="mb-5 flex flex-wrap items-start justify-between gap-3">
+  <div class="flex items-center gap-3">
+    <span class="no-print grid h-11 w-11 place-items-center rounded-xl bg-brand-600 text-white shadow-sm">{{ icono(r.key, 'w-6 h-6') }}</span>
+    <div>
+      <h1 class="page-title">{{ r.title }}</h1>
+      {% if gestion_activa %}<p class="page-sub">Gestión activa: {{ gestion_activa.gestion }} · {{ gestion_activa.plan }}</p>{% endif %}
+    </div>
+  </div>
+  <div class="no-print flex flex-wrap items-center gap-2">
     {% if r.toolbar and current_user.has_perm(r.perm('editar')) %}{% include r.toolbar %}{% endif %}
     {% if r.puede_crear(current_user) %}
-      <button class="rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2"
+      <button class="btn btn-primary"
               hx-get="{{ url_for('crud.nuevo', key=r.key) }}" hx-target="#modal-body" hx-swap="innerHTML"
               @click="modal = true">+ Nuevo</button>
     {% endif %}
@@ -15,16 +23,18 @@
 
 {% if r.info %}{% include r.info %}{% endif %}
 
-<form class="mb-4 grid grid-cols-1 sm:flex sm:flex-wrap gap-2"
+<!-- Búsqueda y filtros -->
+<form class="no-print card mb-4 grid grid-cols-1 gap-2 p-3 sm:flex sm:flex-wrap sm:items-center"
       hx-get="{{ url_for('crud.index', key=r.key) }}" hx-target="#table-wrap" hx-swap="innerHTML"
       hx-push-url="true" hx-trigger="input delay:300ms, submit">
   {% if r.search %}
-    <input type="search" name="q" value="{{ args.get('q', '') }}" placeholder="Buscar…" autocomplete="off"
-           class="sm:w-72 rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 outline-none">
+    <div class="relative sm:w-72">
+      <svg class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path stroke-linecap="round" d="M20 20l-3.5-3.5"/></svg>
+      <input type="search" name="q" value="{{ args.get('q', '') }}" placeholder="Buscar…" autocomplete="off" class="field mt-0 pl-9">
+    </div>
   {% endif %}
   {% for f in r.filters %}
-    <select name="{{ f.name }}" aria-label="{{ f.label }}"
-            class="rounded-lg border px-3 py-2 text-sm bg-white sm:max-w-xs focus:ring-2 focus:ring-brand-500 outline-none">
+    <select name="{{ f.name }}" aria-label="{{ f.label }}" class="field mt-0 sm:w-auto sm:max-w-xs">
       {% set actual = args.get(f.name) %}
       {% if actual is none %}{% set actual = f.default %}{% endif %}
       {% if not f.default %}<option value="">{{ f.label }}: todos</option>{% endif %}

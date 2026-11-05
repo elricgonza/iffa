@@ -1,38 +1,44 @@
-<form hx-post="{{ url_for('acad.masivo_guardar') }}" hx-target="#modal-body" hx-swap="innerHTML" class="p-5">
-  <div class="flex items-start justify-between mb-2">
-    <h2 class="text-lg font-bold text-brand-800">Asignar profesor por curso y materia</h2>
-    <button type="button" @click="modal = false" class="text-slate-400 hover:text-slate-700 text-2xl leading-none" aria-label="Cerrar">&times;</button>
-  </div>
-  <p class="text-sm text-slate-500 mb-4">Asigna (o reemplaza) el profesor en todos los alumnos inscritos en esa materia del curso.</p>
-  <div class="space-y-4">
+<form hx-post="{{ url_for('acad.masivo_guardar') }}" hx-target="#modal-body" hx-swap="innerHTML">
+  <div class="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-4">
     <div>
-      <label class="block text-sm font-medium">Curso <span class="text-red-500">*</span></label>
-      <select name="id_curso" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm bg-white"
+      <p class="text-xs font-medium uppercase tracking-wide text-brand-500">Asignación masiva</p>
+      <h2 class="text-lg font-bold text-brand-800">Asignar profesor por curso y materia</h2>
+    </div>
+    <button type="button" @click="modal = false" class="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Cerrar">
+      <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div class="space-y-4 px-5 py-5">
+    <p class="rounded-lg border border-brand-100 bg-brand-50 px-3 py-2 text-sm text-brand-800">
+      Asigna (o reemplaza) el profesor en todos los alumnos inscritos en esa materia del curso. Solo cursos de la gestión vigente.</p>
+    <div>
+      <label class="field-label">Curso <span class="text-red-500">*</span></label>
+      <select name="id_curso" class="field"
               hx-get="{{ url_for('acad.opciones_materia') }}" hx-target="#sel-materia" hx-trigger="change">
         <option value="">— Seleccione curso —</option>
         {% for v, l in cursos %}<option value="{{ v }}" {{ 'selected' if v|string == values.get('id_curso', '') }}>{{ l }}</option>{% endfor %}
       </select>
-      {% if errors.get('id_curso') %}<p class="mt-1 text-xs text-red-600">{{ errors['id_curso'] }}</p>{% endif %}
+      {% if errors.get('id_curso') %}<p class="field-error">{{ errors['id_curso'] }}</p>{% endif %}
     </div>
     <div>
-      <label class="block text-sm font-medium">Materia <span class="text-red-500">*</span></label>
-      <select id="sel-materia" name="id_materia" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm bg-white">
+      <label class="field-label">Materia <span class="text-red-500">*</span></label>
+      <select id="sel-materia" name="id_materia" class="field">
         {% set opciones = materias %}{% set vacio = '— Seleccione materia —' %}{% set actual = values.get('id_materia', '') %}
         {% include 'crud/_options.html' %}
       </select>
-      {% if errors.get('id_materia') %}<p class="mt-1 text-xs text-red-600">{{ errors['id_materia'] }}</p>{% endif %}
+      {% if errors.get('id_materia') %}<p class="field-error">{{ errors['id_materia'] }}</p>{% endif %}
     </div>
     <div>
-      <label class="block text-sm font-medium">Profesor <span class="text-red-500">*</span></label>
-      <select name="id_profesor" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm bg-white">
+      <label class="field-label">Profesor <span class="text-red-500">*</span></label>
+      <select name="id_profesor" class="field">
         <option value="">— Seleccione profesor —</option>
         {% for v, l in profesores %}<option value="{{ v }}" {{ 'selected' if v|string == values.get('id_profesor', '') }}>{{ l }}</option>{% endfor %}
       </select>
-      {% if errors.get('id_profesor') %}<p class="mt-1 text-xs text-red-600">{{ errors['id_profesor'] }}</p>{% endif %}
+      {% if errors.get('id_profesor') %}<p class="field-error">{{ errors['id_profesor'] }}</p>{% endif %}
     </div>
   </div>
-  <div class="mt-6 flex justify-end gap-2">
-    <button type="button" @click="modal = false" class="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50">Cancelar</button>
-    <button class="rounded-lg bg-brand-600 hover:bg-brand-700 text-white px-5 py-2 text-sm font-medium">Asignar</button>
+  <div class="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3">
+    <button type="button" @click="modal = false" class="btn border border-slate-300 bg-white text-slate-700 hover:bg-slate-100">Cancelar</button>
+    <button class="btn btn-primary px-6">Asignar</button>
   </div>
 </form>
