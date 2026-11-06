@@ -5,12 +5,15 @@ from urllib.parse import urlparse
 
 from flask import (Blueprint, abort, flash, redirect, render_template, request, url_for)
 from flask_login import current_user, login_required, login_user, logout_user
+from sqlalchemy import String, cast, or_
+from sqlalchemy.orm import joinedload, selectinload
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from . import config_notas
 from .crud import RESOURCES, _render_table
-from .models import Asignado, Curso, Materia, Pago, Profesor, Usuario, db
-from .security import log_accion, scope_kind, validar_password
+from .models import (Alumno, Asignado, Curso, Gestion, Grado, Inscrito, Materia,
+                     Nota, Pago, Profesor, Usuario, db)
+from .security import log_accion, mi_alumno, scope_kind, validar_password
 from .services import cursos_vigentes_ids
 
 auth_bp = Blueprint("auth", __name__)
@@ -213,3 +216,166 @@ def notas():
 
 def _estados(cfg):
     return {k: config_notas.estado(k, cfg) for k, _ in config_notas.PERIODOS}
+
+
+# -------------------------------------------------------- Boletín de Calificaciones
+def _roles_boletin_ok():
+    return (current_user.has_role("Administrador")
+            or current_user.has_role("Transcriptor")
+            or current_user.has_role("Estudiante"))
+
+
+def _opts_gestion_boletin():
+    return [(g.id, f"{g.gestion} — {g.plan}")
+            for g in Gestion.query.order_by(Gestion.gestion.desc(), Gestion.id.desc())]
+
+
+def _opts_alumno_boletin(q=None):
+    query = Alumno.query.filter(Alumno.activo.is_(True))
+    if q:
+        toks = [t.strip() for t in str(q).lower().split() if t.strip()][:6]
+        for tok in toks:
+            pat = f"%{tok}%"
+            query = query.filter(
+                or_(
+                    db.func.lower(Alumno.nombre).like(pat),
+                    db.func.lower(Alumno.paterno).like(pat),
+                    db.func.lower(Alumno.materno).like(pat),
+                    cast(Alumno.ci, String).like(pat),
+                )
+            )
+    return [(a.id, f"{a.nombre_completo} (C.I. {a.ci or '—'})")
+            for a in query.order_by(Alumno.paterno, Alumno.materno, Alumno.nombre).limit(40)]
+
+
+def _cargar_boletin(id_alumno, id_gestion):
+    """Devuelve (inscrito, filas_notas) o (None, mensaje_error)."""
+    inscrito = (Inscrito.query
+                .options(
+                    joinedload(Inscrito.alumno),
+                    joinedload(Inscrito.instrumento),
+                    joinedload(Inscrito.curso).joinedload(Curso.gestion),
+                    joinedload(Inscrito.curso).joinedload(Curso.grado),
+                    selectinload(Inscrito.asignados)
+                    .joinedload(Asignado.materia),
+                    selectinload(Inscrito.asignados)
+                    .joinedload(Asignado.nota),
+                )
+                .join(Curso, Inscrito.id_curso == Curso.id)
+                .filter(Inscrito.id_alumno == id_alumno,
+                        Curso.id_gestion == id_gestion,
+                        Inscrito.inscrito.is_(True))
+                .order_by(Inscrito.id.desc())
+                .first())
+    if not inscrito:
+        return None, "No se encontró inscripción activa del estudiante en la gestión seleccionada."
+    filas = []
+    for i, asg in enumerate(sorted(inscrito.asignados,
+                                   key=lambda a: (a.materia.sigla or "", a.materia.materia or "")), 1):
+        n = asg.nota
+        def _v(x):
+            return x if x is not None else ""
+        total = ""
+        if n and n.nota_final is not None:
+            try:
+                tf = float(n.nota_final)
+                total = int(tf) if tf == int(tf) else round(tf, 1)
+            except (TypeError, ValueError):
+                total = n.nota_final
+        literal = ""
+        if n is not None:
+            if n.aprobado is True:
+                literal = "APROBADO"
+            elif n.aprobado is False:
+                literal = "REPROBADO"
+            elif any(x is not None for x in (n.nota1, n.nota2, n.nota3, n.nota4)):
+                literal = "REPROBADO" if (float(n.nota_final or 0) == 0) else ""
+        filas.append({
+            "n": i,
+            "codigo": asg.materia.sigla or "",
+            "asignatura": asg.materia.materia or "",
+            "p1": _v(n.nota1 if n else None),
+            "p2": _v(n.nota2 if n else None),
+            "p3": _v(n.nota3 if n else None),
+            "p4": _v(n.nota4 if n else None),
+            "total": total,
+            "t2": _v(n.segunda_t if n else None),
+            "literal": literal,
+        })
+    return inscrito, filas
+
+
+@main_bp.route("/reportes/boletin", methods=["GET", "POST"])
+@login_required
+def boletin():
+    if not _roles_boletin_ok():
+        abort(403)
+    if not current_user.has_perm("nota_ver"):
+        abort(403)
+
+    es_estudiante = current_user.has_role("Estudiante") and not (
+        current_user.has_role("Administrador") or current_user.has_role("Transcriptor"))
+    alumno_propio = mi_alumno() if es_estudiante else None
+    errores = {}
+    values = {"id_gestion": request.values.get("id_gestion", type=int),
+              "id_alumno": request.values.get("id_alumno", type=int)}
+
+    # Gestión activa por defecto
+    if not values["id_gestion"]:
+        ga = Gestion.query.filter(Gestion.activo.is_(True)).order_by(
+            Gestion.gestion.desc(), Gestion.id.desc()).first()
+        if ga:
+            values["id_gestion"] = ga.id
+
+    if es_estudiante:
+        if not alumno_propio:
+            abort(403)
+        values["id_alumno"] = alumno_propio.id
+
+    if request.method == "POST" or (es_estudiante and values["id_gestion"] and values["id_alumno"]):
+        if not values["id_alumno"]:
+            errores["id_alumno"] = "Seleccione un estudiante"
+        if not values["id_gestion"]:
+            errores["id_gestion"] = "Seleccione una gestión"
+        if not errores:
+            # Alcance: estudiante solo el suyo; admin/transcriptor cualquiera
+            if es_estudiante and values["id_alumno"] != alumno_propio.id:
+                abort(403)
+            inscrito, resultado = _cargar_boletin(values["id_alumno"], values["id_gestion"])
+            if inscrito is None:
+                errores["general"] = resultado
+            else:
+                # Solo lectura: no se registra en audit_log (acciones permitidas:
+                # CREATE, UPDATE, DELETE, LOGIN, LOGOUT, BULK, ERROR).
+                return render_template(
+                    "reportes/boletin_calificaciones.html",
+                    inscrito=inscrito,
+                    filas=resultado,
+                    alumno=inscrito.alumno,
+                    curso=inscrito.curso,
+                    gestion=inscrito.curso.gestion,
+                    grado=inscrito.curso.grado,
+                    instrumento=inscrito.instrumento,
+                )
+
+    return render_template(
+        "reportes/boletin_form.html",
+        errores=errores,
+        values=values,
+        es_estudiante=es_estudiante,
+        alumno_propio=alumno_propio,
+        gestiones=_opts_gestion_boletin(),
+        alumnos=_opts_alumno_boletin(request.args.get("q")) if not es_estudiante else [],
+    )
+
+
+@main_bp.route("/reportes/boletin/alumnos")
+@login_required
+def boletin_alumnos():
+    """Opciones de alumnos para el selector (HTMX search)."""
+    if not _roles_boletin_ok() or current_user.has_role("Estudiante"):
+        abort(403)
+    return render_template("crud/_options.html",
+                           opciones=_opts_alumno_boletin(request.args.get("q")),
+                           vacio="— Busque por nombre o C.I. —", actual="")
+

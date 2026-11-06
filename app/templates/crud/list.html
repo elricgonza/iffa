@@ -12,7 +12,13 @@
     </div>
   </div>
   <div class="no-print flex flex-wrap items-center gap-2">
-    {% if r.toolbar and current_user.has_perm(r.perm('editar')) %}{% include r.toolbar %}{% endif %}
+    {% if r.toolbar %}
+      {% if r.key == 'nota' and current_user.has_perm(r.perm('ver')) %}
+        {% include r.toolbar %}
+      {% elif current_user.has_perm(r.perm('editar')) %}
+        {% include r.toolbar %}
+      {% endif %}
+    {% endif %}
     {% if r.puede_crear(current_user) %}
       <button class="btn btn-primary"
               hx-get="{{ url_for('crud.nuevo', key=r.key) }}" hx-target="#modal-body" hx-swap="innerHTML"

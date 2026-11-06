@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+{% from '_icons.html' import icono %}
+{% block title %}Boletín de Calificaciones{% endblock %}
+{% block content %}
+<div class="mb-5 flex flex-wrap items-start justify-between gap-3">
+  <div class="flex items-center gap-3">
+    <span class="no-print grid h-11 w-11 place-items-center rounded-xl bg-brand-600 text-white shadow-sm">{{ icono('nota', 'w-6 h-6') }}</span>
+    <div>
+      <h1 class="page-title">Boletín de Calificaciones</h1>
+      <p class="page-sub">Seleccione el estudiante y la gestión para generar el reporte</p>
+    </div>
+  </div>
+  <a href="{{ url_for('crud.index', key='nota') }}" class="btn btn-outline no-print">← Volver a Calificaciones</a>
+</div>
+
+{% if errores.general %}
+<div class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{{ errores.general }}</div>
+{% endif %}
+
+<form method="post" class="card max-w-xl space-y-4 p-5" target="_blank">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <div>
+    <label class="label" for="id_gestion">Gestión</label>
+    <select name="id_gestion" id="id_gestion" class="field" required>
+      <option value="">— Seleccione gestión —</option>
+      {% for v, l in gestiones %}
+        <option value="{{ v }}" {{ 'selected' if values.id_gestion == v }}>{{ l }}</option>
+      {% endfor %}
+    </select>
+    {% if errores.id_gestion %}<p class="mt-1 text-xs text-red-600">{{ errores.id_gestion }}</p>{% endif %}
+  </div>
+
+  {% if es_estudiante and alumno_propio %}
+    <div>
+      <label class="label">Estudiante</label>
+      <input type="hidden" name="id_alumno" value="{{ alumno_propio.id }}">
+      <p class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+        {{ alumno_propio.nombre_completo }}
+        {% if alumno_propio.ci %} · C.I. {{ alumno_propio.ci }}{% endif %}
+      </p>
+    </div>
+  {% else %}
+    <div>
+      <label class="label" for="q-alumno">Estudiante</label>
+      <input type="search" id="q-alumno" name="q" placeholder="Buscar por nombre o C.I.…"
+             class="field" autocomplete="off"
+             hx-get="{{ url_for('main.boletin_alumnos') }}"
+             hx-trigger="input delay:300ms"
+             hx-target="#id_alumno" hx-swap="innerHTML"
+             hx-include="this">
+      <select name="id_alumno" id="id_alumno" class="field mt-2" required>
+        <option value="">— Busque y seleccione —</option>
+        {% for v, l in alumnos %}
+          <option value="{{ v }}" {{ 'selected' if values.id_alumno == v }}>{{ l }}</option>
+        {% endfor %}
+      </select>
+      {% if errores.id_alumno %}<p class="mt-1 text-xs text-red-600">{{ errores.id_alumno }}</p>{% endif %}
+    </div>
+  {% endif %}
+
+
+  <div class="flex flex-wrap gap-2 pt-2">
+    <button type="submit" class="btn btn-primary">Generar boletín</button>
+    <a href="{{ url_for('crud.index', key='nota') }}" class="btn btn-outline">Cancelar</a>
+  </div>
+</form>
+{% endblock %}
