@@ -1,9 +1,0 @@
-{# Botón Boletín de Calificaciones: disponible para Administrador, Transcriptor y Estudiante #}
-{% if current_user.has_role('Administrador') or current_user.has_role('Transcriptor') or current_user.has_role('Estudiante') %}
-<a class="btn btn-outline"
-   href="{{ url_for('main.boletin') }}"
-   target="_blank"
-   title="Generar boletín de calificaciones del estudiante">
-  Boletín de Calificaciones
-</a>
-{% endif %}
