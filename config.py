@@ -26,6 +26,9 @@ class Config:
     NUM_CUOTAS = int(os.environ.get("NUM_CUOTAS", "1"))
     NOTA_APROBACION = float(os.environ.get("NOTA_APROBACION", "51"))
     PER_PAGE = int(os.environ.get("PER_PAGE", "15"))
+    # Datos fijos del Boletín de Calificaciones (no existen como campos en la base de datos)
+    BOLETIN_REGIMEN = os.environ.get("BOLETIN_REGIMEN", "ANUALIZADO")
+    BOLETIN_CARRERA = os.environ.get("BOLETIN_CARRERA", "MÚSICA ACADÉMICA")
     # Archivo con las fechas de habilitación de la transcripción de notas
     CONFIG_NOTAS_PATH = os.environ.get(
         "CONFIG_NOTAS_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "config_notas.json"))

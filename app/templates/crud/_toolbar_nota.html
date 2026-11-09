@@ -1,0 +1,8 @@
+{# Botones de Calificaciones: «Boletín de Calificaciones» (administrador, transcriptor y estudiante) #}
+{% if current_user.has_perm('nota_boletin') %}
+<button class="btn btn-outline"
+        hx-get="{{ url_for('reportes.boletin_seleccion') }}" hx-target="#modal-body" hx-swap="innerHTML"
+        @click="modal = true">
+  <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>
+  Boletín de Calificaciones</button>
+{% endif %}

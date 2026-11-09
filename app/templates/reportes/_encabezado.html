@@ -5,14 +5,15 @@
   <div class="rpt-inst">
     <div class="rpt-inst-linea">{{ INSTITUCION }}</div>
     <div class="rpt-inst-nombre">{{ NOMBRE_INST }}</div>
-    <div class="rpt-inst-sistema">{{ SISTEMA }}</div>
+    <div class="rpt-inst-res">{{ RESOLUCIONES }} · {{ CIUDAD_INST }}</div>
+    <div class="rpt-inst-lema">{{ LEMA }}</div>
   </div>
   <div class="rpt-meta">
-    {% if gestion_activa %}Gestión {{ gestion_activa.gestion }}<br>{% endif %}
+    {% if meta_reporte %}{{ meta_reporte }}<br>{% elif gestion_activa %}Gestión {{ gestion_activa.gestion }}<br>{% endif %}
     {{ fecha_reporte or '' }}
   </div>
 </header>
-{% if titulo_reporte %}
+{% if titulo_reporte and not ocultar_titulo %}
   <h1 class="rpt-titulo">{{ titulo_reporte }}</h1>
   {% if subtitulo_reporte %}<p class="rpt-subtitulo">{{ subtitulo_reporte }}</p>{% endif %}
 {% endif %}

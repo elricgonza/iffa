@@ -15,6 +15,9 @@ SIGLA = "IFALFA"
 INSTITUCION = "Instituto de Formación Artística"
 NOMBRE = "Luis Felipe Arce"
 SISTEMA = "Sistema de Gestión Académica"
+RESOLUCIONES = "R.M. 685/2016 · R.M. 845/1993"   # figuran en el encabezado de los reportes
+CIUDAD = "La Paz – Bolivia"
+LEMA = "Trabajando por la formación musical desde 1975"
 
 _VARIANTES = {"original": "logo.png", "color": "logo-sm.png", "blanco": "logo-blanco.png", "favicon": "favicon.png"}
 

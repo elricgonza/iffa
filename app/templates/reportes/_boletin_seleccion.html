@@ -1,0 +1,58 @@
+{# Modal «Boletín de Calificaciones»: elegir la inscripción (estudiante: las suyas; admin/transcriptor: buscar alumno) #}
+<div x-data='Object.assign(searchSelect({{ (items[0][0]|string if (modo == "estudiante" and items) else "")|tojson }}, ""),
+                           { base: {{ url_for("reportes.boletin", id_inscrito=0)[:-1]|tojson }} })'>
+  <div class="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-4">
+    <div>
+      <p class="text-xs font-medium uppercase tracking-wide text-brand-500">Reporte</p>
+      <h2 class="text-lg font-bold text-brand-800">Boletín de Calificaciones</h2>
+    </div>
+    <button type="button" @click="modal = false" class="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Cerrar">
+      <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+
+  <div class="space-y-4 px-5 py-5">
+    {% if modo == 'estudiante' %}
+      {% if items %}
+        <label class="field-label">Gestión / curso
+          <select x-model="id" class="field">
+            {% for v, l in items %}<option value="{{ v }}">{{ l }}</option>{% endfor %}
+          </select>
+        </label>
+        <p class="field-help">Se genera con las calificaciones registradas hasta hoy.</p>
+      {% else %}
+        <p class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">No tiene inscripciones registradas.</p>
+      {% endif %}
+    {% else %}
+      <label class="field-label">Gestión
+        <select id="bol_gestion" class="field">
+          {% for v, l in gestiones %}<option value="{{ v }}">{{ l }}</option>{% endfor %}
+        </select>
+      </label>
+      <div>
+        <p class="field-label">Alumno</p>
+        <div x-show="id" class="mt-1 flex items-center justify-between gap-2 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-sm">
+          <span x-text="label" class="font-medium text-brand-800"></span>
+          <button type="button" @click="clear()" class="text-xs text-red-600 hover:underline">Cambiar</button>
+        </div>
+        <div x-show="!id">
+          <input x-ref="q" type="search" name="q" autocomplete="off" placeholder="Nombre, apellido o C.I. …" class="field" @keydown.enter.prevent
+                 hx-get="{{ url_for('reportes.boletin_buscar') }}" hx-include="#bol_gestion"
+                 hx-trigger="input changed delay:250ms, change from:#bol_gestion" hx-target="#res_boletin" hx-swap="innerHTML">
+          <div id="res_boletin" x-ref="res" class="mt-1 max-h-56 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-sm empty:hidden"></div>
+        </div>
+        <p class="field-help">Busque por nombre, apellido o C.I. entre los inscritos de la gestión elegida.</p>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="sticky bottom-0 flex flex-wrap justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3">
+    <button type="button" @click="modal = false" class="btn border border-slate-300 bg-white text-slate-700 hover:bg-slate-100">Cerrar</button>
+    {% if pdf_ok %}
+      <a :href="id ? base + id + '?pdf=1' : null" target="_blank" rel="noopener" @click="id && (modal = false)"
+         :class="!id && 'pointer-events-none opacity-50'" class="btn btn-outline">Descargar PDF</a>
+    {% endif %}
+    <a :href="id ? base + id : null" target="_blank" rel="noopener" @click="id && (modal = false)"
+       :class="!id && 'pointer-events-none opacity-50'" class="btn btn-primary">Ver boletín</a>
+  </div>
+</div>

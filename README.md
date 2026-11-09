@@ -148,6 +148,18 @@ confirmación, indicador de requisitos en pantalla y opción de mostrar/ocultar.
 contraseña actual se bloquea 5 minutos (por usuario), y todo queda en la auditoría. La misma política se aplica
 cuando el Administrador crea o cambia contraseñas en *Usuarios*.
 
+### Boletín de Calificaciones
+Botón **Boletín de Calificaciones** en *Calificaciones* (permiso `nota_boletin`: Administrador, Transcriptor y
+Estudiante). El Administrador y el Transcriptor eligen la gestión y buscan al alumno (nombre, apellido o C.I.); el
+Estudiante elige entre sus propias inscripciones y solo puede ver su boletín. Se genera desde la base de datos
+(datos del estudiante, instrumento, curso, paralelo y, por asignatura: código, P1–P4, total, 2T y literal
+Aprobado/Reprobado/Pendiente, con resumen y situación del estudiante) y se muestra en pantalla (Imprimir) o se
+descarga en **PDF**. Las materias de arrastre se identifican con su curso. «Régimen» y «Carrera» no existen en la base:
+se toman de `BOLETIN_REGIMEN` (ANUALIZADO) y `BOLETIN_CARRERA` (MÚSICA ACADÉMICA) en `.env`; las resoluciones
+ministeriales y el lema, de `app/branding.py`.
+*Despliegue:* tras actualizar ejecute `flask seed` (otorga el permiso nuevo `nota_boletin` a los roles base sin tocar lo ya personalizado). El PDF usa WeasyPrint: `pip install -r requirements.txt` y
+`sudo apt install libpango-1.0-0 libpangoft2-1.0-0`; si no está instalado, el botón de PDF se oculta y queda «Imprimir».
+
 ### Identidad visual y reportes
 La interfaz usa la paleta institucional (azul marino `#193B68` y cian `#0390C6`, escala `brand-*` en
 `app/templates/_head.html`), tipografía Inter y componentes comunes (`btn`, `card`, `field`, `badge`) definidos

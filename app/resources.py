@@ -632,6 +632,7 @@ Resource(
              Filter("id_materia", "Materia", _opts_materia, lambda q, v: q.filter(Asignado.id_materia == int(v)))],
     order=lambda: [Asignado.id_curso.desc(), Materia.materia, Alumno.paterno, Alumno.nombre],
     before_save=_before_save_nota, info="crud/_info_nota.html",
+    toolbar="crud/_toolbar_nota.html", permisos_extra=("boletin",),  # nota_boletin: Boletín de Calificaciones
 )
 
 

@@ -87,7 +87,8 @@ class Resource:
                  search=None, filters=(), order=None, scope=None, can_edit=None,
                  can_delete=None, allow_create=True, allow_edit=True, allow_delete=True,
                  validate=None, before_save=None, after_save=None, before_delete=None,
-                 toolbar=None, info=None, solo_admin=False, can_create=None, menu=None, form_size="max-w-2xl"):
+                 toolbar=None, info=None, solo_admin=False, can_create=None, menu=None, permisos_extra=(),
+                 form_size="max-w-2xl"):
         self.key, self.model, self.title, self.singular = key, model, title, singular
         self.fields, self.columns, self.filters = fields, columns, list(filters)
         self.query, self.search, self.order, self.scope = query, search, order, scope
@@ -97,6 +98,7 @@ class Resource:
         self.before_delete, self.toolbar, self.form_size = before_delete, toolbar, form_size
         self.info = info  # plantilla opcional con información bajo el título del listado
         self.menu = menu or title  # etiqueta (corta) en el menú lateral
+        self.permisos_extra = tuple(permisos_extra)  # acciones adicionales (p. ej. «boletin» -> nota_boletin)
         self.solo_admin = solo_admin  # crear/editar/eliminar solo para el rol Administrador (además del permiso)
         RESOURCES[key] = self
 
@@ -112,6 +114,7 @@ class Resource:
             p.append("editar")
         if self.allow_delete:
             p.append("eliminar")
+        p.extend(self.permisos_extra)
         return [self.perm(x) for x in p]
 
     def _admin_ok(self, user):

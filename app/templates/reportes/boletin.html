@@ -1,0 +1,103 @@
+{% extends 'reportes/_base.html' %}
+{% set ocultar_titulo = true %}
+
+{% block estilos %}
+  .acciones { max-width: 210mm; margin: 14px auto 0; display: flex; gap: 8px; justify-content: flex-end; font-family: Arial, sans-serif; }
+  .acciones a, .acciones button { background: #193B68; color: #fff; border: 0; border-radius: 8px; padding: 8px 16px; font-size: 13px; cursor: pointer; text-decoration: none; }
+  .acciones .sec { background: #fff; color: #193B68; border: 1px solid #193B68; }
+  .bol-titulo { text-align: center; font-size: 14.5pt; font-weight: 800; color: #0F233E; letter-spacing: .02em; margin: 14px 0 10px; text-transform: uppercase; }
+  .bol-titulo span { color: #0390C6; }
+  table.datos { width: 100%; border-collapse: collapse; font-size: 9pt; border: 1px solid #94a3b8; }
+  table.datos th { background: #193B68; color: #fff; text-align: left; padding: 5px 8px; font-size: 8.5pt; letter-spacing: .06em; }
+  table.datos td { border: 1px solid #cbd5e1; padding: 5px 8px; width: 50%; vertical-align: top; }
+  table.datos .et { font-weight: 700; color: #193B68; font-size: 8pt; text-transform: uppercase; }
+  table.datos .val { font-weight: 600; text-transform: uppercase; }
+  table.notas { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 9pt; }
+  table.notas th { background: #193B68; color: #fff; padding: 6px 4px; font-size: 8.5pt; text-align: center; border: 1px solid #193B68; }
+  table.notas td { border: 1px solid #cbd5e1; padding: 5px 4px; text-align: center; }
+  table.notas tbody tr:nth-child(even) td { background: #f8fafc; }
+  table.notas td.asig { text-align: left; padding-left: 8px; text-transform: uppercase; }
+  table.notas td.cod { font-weight: 600; color: #193B68; }
+  table.notas td.num { font-weight: 600; }
+  table.notas td.total { font-weight: 800; background: #EDF4FD !important; color: #0F233E; }
+  table.notas .vacio { color: #cbd5e1; font-weight: 400; }
+  table.notas .extra { display: block; font-size: 7pt; color: #0390C6; text-transform: none; font-style: italic; }
+  table.notas td.lit { font-size: 8pt; font-weight: 700; letter-spacing: .03em; }
+  .lit-ok { color: #047857; } .lit-no { color: #b91c1c; background: #fef2f2 !important; } .lit-pe { color: #92400e; }
+  td.rojo { color: #b91c1c; }
+  .resumen { display: flex; gap: 8px; margin-top: 12px; }
+  .resumen .caja { flex: 1; border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 8px; text-align: center; }
+  .resumen .caja b { display: block; font-size: 15pt; color: #193B68; line-height: 1.1; }
+  .resumen .caja span { font-size: 7.5pt; color: #64748b; text-transform: uppercase; letter-spacing: .05em; }
+  .resumen .sit { flex: 1.6; background: #193B68; color: #fff; border-color: #193B68; }
+  .resumen .sit b { color: #fff; font-size: 10.5pt; margin-top: 3px; } .resumen .sit span { color: #A8C7F0; }
+  .leyenda { margin-top: 8px; font-size: 7.5pt; color: #64748b; }
+  .firmas { display: flex; gap: 40px; margin-top: 44px; page-break-inside: avoid; }
+  .firmas div { flex: 1; border-top: 1px solid #475569; text-align: center; padding-top: 4px; font-size: 8.5pt; color: #334155; }
+  .emision { margin-top: 16px; text-align: right; font-size: 8.5pt; color: #475569; }
+{% endblock %}
+
+{% block acciones %}
+  {% if not pdf %}
+  <div class="acciones no-print">
+    <button onclick="window.print()">Imprimir</button>
+    {% if pdf_disponible %}<a href="{{ url_for('reportes.boletin', id_inscrito=id_inscrito, pdf=1) }}" target="_blank" rel="noopener">Descargar PDF</a>{% endif %}
+    <button class="sec" onclick="window.close()">Cerrar</button>
+  </div>
+  {% endif %}
+{% endblock %}
+
+{% block cuerpo %}
+  <h1 class="bol-titulo">Boletín de Calificaciones <span>Gestión {{ d.gestion }}</span></h1>
+
+  <table class="datos">
+    <thead><tr><th colspan="2">DATOS DEL ESTUDIANTE</th></tr></thead>
+    <tbody>
+      <tr><td colspan="2"><span class="et">Apellidos y nombres:</span> <span class="val">{{ d.alumno.nombre_completo }}</span></td></tr>
+      <tr><td><span class="et">C.I.:</span> <span class="val">{{ d.ci or '—' }}</span></td>
+          <td><span class="et">Régimen:</span> <span class="val">{{ d.regimen }}</span></td></tr>
+      <tr><td><span class="et">Instrumento de especialidad:</span> <span class="val">{{ d.instrumento }}</span></td>
+          <td><span class="et">Gestión:</span> <span class="val">{{ d.gestion }}</span></td></tr>
+      <tr><td><span class="et">Curso:</span> <span class="val">{{ d.curso }}</span></td>
+          <td><span class="et">Carrera:</span> <span class="val">{{ d.carrera }}</span></td></tr>
+      <tr><td><span class="et">Paralelo:</span> <span class="val">{{ d.paralelo }}</span></td>
+          <td><span class="et">Fecha de emisión:</span> <span class="val">{{ d.fecha_reporte }}</span></td></tr>
+    </tbody>
+  </table>
+
+  <table class="notas">
+    <thead>
+      <tr><th style="width:5%">N°</th><th style="width:11%">CÓDIGO</th><th>ASIGNATURA</th>
+          <th style="width:7%">P1</th><th style="width:7%">P2</th><th style="width:7%">P3</th><th style="width:7%">P4</th>
+          <th style="width:9%">TOTAL</th><th style="width:6%">2T</th><th style="width:13%">LITERAL</th></tr>
+    </thead>
+    <tbody>
+      {% for f in d.filas %}
+      <tr>
+        <td>{{ f.n }}</td>
+        <td class="cod">{{ f.codigo }}</td>
+        <td class="asig">{{ f.asignatura }}{% if f.extra %}<span class="extra">Arrastre · {{ f.extra }}</span>{% endif %}</td>
+        {% for v in f.p %}<td class="num {{ 'rojo' if v is not none and v < d.nota_minima }}">{% if v is none %}<span class="vacio">—</span>{% else %}{{ v }}{% endif %}</td>{% endfor %}
+        <td class="total">{% if f.total is none %}<span class="vacio">—</span>{% else %}{{ f.total }}{% endif %}</td>
+        <td class="num">{% if f.segunda_t is none %}&nbsp;{% else %}{{ f.segunda_t }}{% endif %}</td>
+        <td class="lit {{ 'lit-ok lit-ok' if f.aprobado else ('lit-no' if f.aprobado is false else 'lit-pe') }}">{{ f.literal }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="10" style="padding:18px; color:#64748b">El estudiante no tiene materias asignadas en esta inscripción.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="resumen">
+    <div class="caja"><b>{{ d.aprobadas }}</b><span>Aprobadas</span></div>
+    <div class="caja"><b>{{ d.reprobadas }}</b><span>Reprobadas</span></div>
+    <div class="caja"><b>{{ d.pendientes }}</b><span>Pendientes</span></div>
+    <div class="caja"><b>{{ d.promedio if d.promedio is not none else '—' }}</b><span>Promedio general</span></div>
+    <div class="caja sit"><span>Situación del estudiante</span><b>{{ d.situacion }}</b></div>
+  </div>
+  <p class="leyenda">P1–P4: calificación de cada período · TOTAL: promedio de los períodos · 2T: segundo turno (reemplaza al total si éste no alcanza
+    la nota mínima de aprobación: {{ d.nota_minima }}) · PENDIENTE: aún sin calificaciones registradas.</p>
+
+  <div class="firmas"><div>Dirección Académica</div><div>Secretaría</div></div>
+  <p class="emision">{{ d.ciudad }}, {{ d.fecha_reporte }}</p>
+{% endblock %}

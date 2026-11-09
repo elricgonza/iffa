@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app import create_app  # noqa: E402
 from app.models import (Alumno, Asignado, AuditLog, Curso, Gestion, Grado, Inscrito, Instrumento, Materia, Nota, Pago,  # noqa: E402
                         Permiso, Profesor, Rol, Usuario, db)
+from app.reportes import pdf_disponible  # noqa: E402
 
 app = create_app()
 app.config["WTF_CSRF_ENABLED"] = False
@@ -591,6 +592,61 @@ if True:
                                      titulo_reporte="Listado de prueba", gestion_activa=None, fecha_reporte="01/01/2026")
         ok("data:image/png;base64," in rep and "Luis Felipe Arce" in rep and "Listado de prueba" in rep and "<p>cuerpo</p>" in rep,
            "plantilla base de reportes: logo incrustado y encabezado institucional")
+
+    # ---- Boletín de Calificaciones: botón por rol, alcance de datos, contenido y PDF
+    roles_con = lambda: db_(lambda: {r.rol for r in Rol.query.all() if any(p.permiso == "nota_boletin" for p in r.permisos)})
+    ok(roles_con() == {"Administrador", "Transcriptor", "Estudiante"}, "permiso nota_boletin: administrador, transcriptor y estudiante")
+    def _quitar():  # simula una base anterior a esta versión
+        db.session.execute(db.text("DELETE FROM rol_permiso WHERE id_permiso IN (SELECT id FROM permiso WHERE permiso='nota_boletin')"))
+        db.session.execute(db.text("DELETE FROM permiso WHERE permiso='nota_boletin'"))
+        db.session.commit()
+    db_(_quitar)
+    res = app.test_cli_runner().invoke(args=["seed"])
+    ok("nota_boletin" in res.output and roles_con() == {"Administrador", "Transcriptor", "Estudiante"},
+       "flask seed otorga el permiso nuevo a los roles base de una base existente (sin tocar Profesor/Consulta)")
+
+    iR = db_(lambda: Inscrito.query.filter_by(id_alumno=1, id_curso=1).first().id)      # Carla Rojas (usuario alu1)
+    for nombre, cli in (("administrador", admin), ("transcriptor", tr), ("estudiante", a1)):
+        ok("Boletín de Calificaciones" in cli.get("/nota/").get_data(as_text=True),
+           f"Calificaciones: botón «Boletín de Calificaciones» visible para {nombre}")
+    ok("Boletín de Calificaciones" not in p1.get("/nota/").get_data(as_text=True)
+       and "Boletín de Calificaciones" not in cn.get("/nota/").get_data(as_text=True), "botón oculto para profesor y consulta")
+    ok(p1.get(f"/reportes/boletin/{iR}").status_code == 403 and cn.get(f"/reportes/boletin/{iR}").status_code == 403
+       and p1.get("/reportes/boletin/seleccion").status_code == 403, "profesor y consulta: sin acceso al boletín (403)")
+    ok(app.test_client().get(f"/reportes/boletin/{iR}").status_code == 302, "boletín exige sesión iniciada")
+
+    h = admin.get(f"/reportes/boletin/{iR}").get_data(as_text=True)
+    ok(all(t in h for t in ("Boletín de Calificaciones", "DATOS DEL ESTUDIANTE", "Rojas Carla", "ANUALIZADO", "MÚSICA ACADÉMICA",
+                            "Piano", "LM1", "AR1", "Lenguaje Musical", "data:image/png;base64", "R.M. 685/2016")),
+       "boletín: encabezado institucional, datos del estudiante y asignaturas")
+    ok('class="total">60<' in h and "APROBADO" in h and ">70<" in h and "PENDIENTE" in h and "EN PROCESO" in h,
+       "boletín: P1-P4, total (promedio 59.5 → 60), 2T, literal y situación según la base de datos")
+    ok(bool(re.search(r"Gestión 2026", h)) and "Piano I" in h, "boletín: gestión, curso y paralelo del curso inscrito")
+    iV = db_(lambda: Inscrito.query.filter_by(id_alumno=2, id_curso=2).first().id)       # Vega, gestión 2025
+    ok(tr.get(f"/reportes/boletin/{iV}").status_code == 200 and "2025" in tr.get(f"/reportes/boletin/{iV}").get_data(as_text=True),
+       "transcriptor: boletín de cualquier alumno y gestión")
+    ok(a1.get(f"/reportes/boletin/{iR}").status_code == 200 and a1.get(f"/reportes/boletin/{iV}").status_code == 404,
+       "estudiante: solo su propio boletín (el de otro alumno → 404)")
+    zs = a1.get("/reportes/boletin/seleccion").get_data(as_text=True)
+    ok(f'value="{iR}"' in zs and f'value="{iV}"' not in zs and "Vega" not in zs, "estudiante: la selección lista solo sus inscripciones")
+    ok(a1.get("/reportes/boletin/buscar?q=vega").status_code == 403, "estudiante: no puede buscar a otros alumnos")
+    hz = admin.get(f"/reportes/boletin/{iZ}").get_data(as_text=True)
+    ok("Arrastre" in hz and "B1" in hz and "A2" in hz, "boletín: las materias de arrastre se identifican con su curso")
+
+    sb = lambda q, cli=admin: cli.get(f"/reportes/boletin/buscar?q={q}", headers=HXH).get_data(as_text=True)
+    ok(f'data-id="{iR}"' in sb("rojas") and "C.I." in sb("rojas") and f'data-id="{iR}"' in sb("carla%20roj"),
+       "búsqueda de alumno para el boletín: por apellido y por varias palabras")
+    ok("Vega" not in sb("vega") and "Vega" in sb("vega&id_gestion=2") and "Vega" in sb("vega&id_gestion=todas"),
+       "búsqueda: respeta la gestión elegida (por defecto la activa)")
+    ok("al menos 2" in sb("a") and "Sin resultados" in sb("zzzzzz"), "búsqueda: mínimo 2 caracteres y sin resultados")
+    ok("bol_gestion" in admin.get("/reportes/boletin/seleccion").get_data(as_text=True), "administrador: selección con gestión y búsqueda de alumno")
+
+    rp = admin.get(f"/reportes/boletin/{iR}?pdf=1")
+    if pdf_disponible():
+        ok(rp.status_code == 200 and rp.mimetype == "application/pdf" and rp.data[:5] == b"%PDF-", "boletín en PDF (WeasyPrint)")
+    else:
+        ok(rp.status_code == 501, "PDF no disponible: aviso claro (501) y la versión HTML sigue funcionando")
+    ok(db_(lambda: AuditLog.query.filter_by(modulo="reporte_boletin").count()) >= 3, "la generación del boletín queda en la auditoría")
 
     # integridad
     r = admin.post("/inscrito/1/eliminar", headers={"HX-Request": "true"})

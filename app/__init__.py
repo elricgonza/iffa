@@ -49,6 +49,7 @@ def create_app():
 
     from . import resources  # noqa: F401  (registra los recursos)
     from .crud import RESOURCES, bp as crud_bp
+    from .reportes import reportes_bp
     from .views import acad_bp, auth_bp, cfg_bp, main_bp
     from . import config_notas
 
@@ -56,9 +57,11 @@ def create_app():
     app.register_blueprint(main_bp)
     from . import branding
     app.jinja_env.globals.update(SIGLA=branding.SIGLA, INSTITUCION=branding.INSTITUCION, NOMBRE_INST=branding.NOMBRE,
-                                 SISTEMA=branding.SISTEMA, logo_data_uri=branding.logo_data_uri)
+                                 SISTEMA=branding.SISTEMA, logo_data_uri=branding.logo_data_uri,
+                                 RESOLUCIONES=branding.RESOLUCIONES, CIUDAD_INST=branding.CIUDAD, LEMA=branding.LEMA)
     app.register_blueprint(acad_bp)
     app.register_blueprint(cfg_bp)
+    app.register_blueprint(reportes_bp)
     app.jinja_env.globals["estado_notas"] = config_notas.resumen
     app.register_blueprint(crud_bp)
 
@@ -128,9 +131,9 @@ def permisos_por_rol():
         "Transcriptor": ver(*ACADEMICOS, "profesor") + [
             "alumno_ver", "alumno_crear", "alumno_editar",
             "inscrito_ver", "inscrito_crear", "inscrito_editar",
-            "asignado_ver", "asignado_crear", "asignado_editar", "nota_ver", "nota_editar"],
+            "asignado_ver", "asignado_crear", "asignado_editar", "nota_ver", "nota_editar", "nota_boletin"],
         "Profesor": ver(*ACADEMICOS) + ["alumno_ver", "inscrito_ver", "asignado_ver", "nota_ver", "nota_editar"],
-        "Estudiante": ["alumno_ver", "inscrito_ver", "asignado_ver", "nota_ver", "pago_ver"],
+        "Estudiante": ["alumno_ver", "inscrito_ver", "asignado_ver", "nota_ver", "pago_ver", "nota_boletin"],
     }
 
 
@@ -148,11 +151,14 @@ def register_cli(app):
     def seed():
         """Crea roles base y permisos (idempotente). No pisa permisos ya personalizados."""
         from .crud import RESOURCES
+        nuevos = set()  # permisos creados en esta ejecución
+        etiquetas = {"boletin": "Boletín de calificaciones"}
         for r in RESOURCES.values():
             for p in r.permisos_aplicables():
                 if not Permiso.query.filter_by(permiso=p).first():
                     accion = p.rsplit("_", 1)[1]
-                    db.session.add(Permiso(permiso=p, descripcion=f"{accion.capitalize()} · {r.title}"))
+                    db.session.add(Permiso(permiso=p, descripcion=f"{etiquetas.get(accion, accion.capitalize())} · {r.title}"))
+                    nuevos.add(p)
         db.session.flush()
         mapa = permisos_por_rol()
         for nombre, perms in mapa.items():
@@ -163,8 +169,11 @@ def register_cli(app):
                 db.session.add(rol)
             if nuevo or nombre == "Administrador":  # el admin siempre conserva todos
                 rol.permisos = Permiso.query.filter(Permiso.permiso.in_(perms)).all()
+            elif nuevos:  # permisos nuevos (p. ej. tras una actualización): se otorgan a los roles base que los llevan
+                extra = Permiso.query.filter(Permiso.permiso.in_([p for p in perms if p in nuevos])).all()
+                rol.permisos = list(rol.permisos) + [p for p in extra if p not in rol.permisos]
         db.session.commit()
-        click.echo("Roles y permisos listos.")
+        click.echo("Roles y permisos listos." + (f" Permisos nuevos: {', '.join(sorted(nuevos))}" if nuevos else ""))
 
     @app.cli.command("create-user")
     @click.argument("usuario")
