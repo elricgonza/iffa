@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app import create_app  # noqa: E402
 from app.models import (Alumno, Asignado, AuditLog, Curso, Gestion, Grado, Inscrito, Instrumento, Materia, Nota, Pago,  # noqa: E402
                         Permiso, Profesor, Rol, Usuario, db)
-from app.reportes import pdf_disponible  # noqa: E402
+from app.reportes import centralizador_xlsx, datos_centralizador, pdf_disponible  # noqa: E402
 
 app = create_app()
 app.config["WTF_CSRF_ENABLED"] = False
@@ -539,7 +539,7 @@ if True:
     from html.parser import HTMLParser
 
     class Contador(HTMLParser):
-        VOID = {"meta", "link", "img", "input", "br", "hr", "path", "circle", "rect", "source"}
+        VOID = {"meta", "link", "img", "input", "br", "hr", "path", "circle", "rect", "source", "col"}
 
         def __init__(self):
             super().__init__()
@@ -647,6 +647,94 @@ if True:
     else:
         ok(rp.status_code == 501, "PDF no disponible: aviso claro (501) y la versión HTML sigue funcionando")
     ok(db_(lambda: AuditLog.query.filter_by(modulo="reporte_boletin").count()) >= 3, "la generación del boletín queda en la auditoría")
+
+    # ---- Reportes → Centralizador de Calificaciones
+    roles_cz = lambda: db_(lambda: {r.rol for r in Rol.query.all() if any(p.permiso == "reporte_centralizador" for p in r.permisos)})
+    ok(roles_cz() == {"Administrador", "Transcriptor", "Estudiante"}, "permiso reporte_centralizador: administrador, transcriptor y estudiante")
+    def _quitar_cz():
+        db.session.execute(db.text("DELETE FROM rol_permiso WHERE id_permiso IN (SELECT id FROM permiso WHERE permiso='reporte_centralizador')"))
+        db.session.execute(db.text("DELETE FROM permiso WHERE permiso='reporte_centralizador'"))
+        db.session.commit()
+    db_(_quitar_cz)
+    res = app.test_cli_runner().invoke(args=["seed"])
+    ok("reporte_centralizador" in res.output and roles_cz() == {"Administrador", "Transcriptor", "Estudiante"},
+       "flask seed otorga el permiso del Centralizador en una base existente")
+
+    for nombre, cli in (("administrador", admin), ("transcriptor", tr), ("estudiante", a1)):
+        h0 = cli.get("/").get_data(as_text=True)
+        ok("Reportes" in h0 and "Centralizador de Calificaciones" in h0 and cli.get("/reportes/centralizador").status_code == 200,
+           f"menú Procesos → Reportes → Centralizador de Calificaciones disponible para {nombre}")
+    ok("Centralizador de Calificaciones" not in p1.get("/").get_data(as_text=True)
+       and "Centralizador de Calificaciones" not in cn.get("/").get_data(as_text=True)
+       and p1.get("/reportes/centralizador").status_code == 403 and cn.get("/reportes/centralizador").status_code == 403
+       and p1.get("/reportes/centralizador/generar?id_curso=1").status_code == 403, "profesor y consulta: sin acceso al Centralizador")
+    ok(app.test_client().get("/reportes/centralizador").status_code == 302, "el Centralizador exige sesión iniciada")
+    good, det = bien_formado(admin.get("/reportes/centralizador").get_data(as_text=True))
+    ok(good, f"HTML bien formado: pantalla del Centralizador {'' if good else det}")
+
+    cu = lambda cli, g: cli.get(f"/reportes/centralizador/cursos?id_gestion={g}", headers=HXH).get_data(as_text=True)
+    ok("Piano I A / 2026" in cu(admin, "activa") and "Piano I B / 2025" not in cu(admin, "activa")
+       and "Piano I B / 2025" in cu(admin, 2) and "Piano I B / 2025" in cu(admin, "todas"), "selector de curso según la gestión elegida")
+    ok("Piano I A / 2026" in cu(a1, "activa") and "Técnico Medio" not in cu(a1, "activa"), "estudiante: solo los cursos en los que está inscrito")
+
+    gen = lambda cli, curso, fmt="html", extra="": cli.get(f"/reportes/centralizador/generar?id_curso={curso}&formato={fmt}{extra}")
+    h1 = gen(admin, 1, extra="&libro=10&folio=0015").get_data(as_text=True)
+    ok(all(t in h1 for t in ("CENTRALIZADOR DE CALIFICACIONES", "ROJAS CARLA", "LM1", "AR1", "AR2", "LIBRO N° 10", "FOLIO N° 0015",
+                              "80730917", "034/1993-0685/2016", "ESTUDIANTES INSCRITOS", "ESTADÍSTICAS", "data:image/png;base64")),
+       "Centralizador (HTML): encabezado oficial, datos del curso, nómina y estadísticas")
+    ok(bool(re.search(r'class="nota [^"]*">60<', h1)) and "EN PROCESO" in h1, "Centralizador: nota final por asignatura (promedio; 2T solo si reprueba) y estado según la base de datos")
+    good, det = bien_formado(h1)
+    ok(good, f"HTML bien formado: Centralizador {'' if good else det}")
+    ok("ARRASTRE" in gen(admin, 3).get_data(as_text=True), "Centralizador: los arrastres se indican en observaciones")
+
+    rx = gen(admin, 1, "xlsx", "&libro=10&folio=0015")
+    ok(rx.status_code == 200 and "spreadsheetml" in rx.mimetype and "attachment" in rx.headers["Content-Disposition"], "Centralizador en Excel (descarga .xlsx)")
+    import io
+    from openpyxl import load_workbook
+    wb = load_workbook(io.BytesIO(rx.data))
+    av, rv = wb["ANVERSO"], wb["REVERSO"]
+    celdas = {c.value for fila in av.iter_rows() for c in fila if c.value is not None}
+    ok(wb.sheetnames == ["ANVERSO", "REVERSO"] and {"CENTRALIZADOR DE CALIFICACIONES", "ROJAS CARLA", "LIBRO N° 10", "FOLIO N° 0015",
+                                                      "CÉDULA DE IDENTIDAD ", "ESTADO", "NÓMINA ESTUDIANTES"} <= celdas
+       and {"AR1", "AR2", "LM1"} <= celdas, "Excel: hojas ANVERSO y REVERSO con el formato oficial y los datos")
+    fila_carla = next(c.row for c in av["B"] if c.value == "ROJAS CARLA")
+    ok(60 in [c.value for c in av[fila_carla]] and "EN PROCESO" in [c.value for c in av[fila_carla]], "Excel: calificación final y estado del estudiante")
+    ok(any(str(c.value).startswith("=IF(") for fila in rv.iter_rows() for c in fila if c.value is not None)
+       and rv.page_setup.orientation == "landscape", "Excel: estadísticas con porcentajes (fórmulas) y página horizontal")
+
+    def _inyeccion():
+        d = datos_centralizador(db.session.get(Curso, 1))
+        d["filas"][0]["nombre"] = "=HYPERLINK(\"http://x\",\"x\")"
+        d["filas"][0]["obs"] = "=1+1"
+        w = load_workbook(io.BytesIO(centralizador_xlsx(d)))["ANVERSO"]
+        return [(c.value, c.data_type) for fila in w.iter_rows(min_row=16, max_row=16) for c in fila if c.value in (d["filas"][0]["nombre"], "=1+1")]
+    inj = db_(_inyeccion)
+    ok(len(inj) == 2 and all(t == "s" for _, t in inj), "Excel: un nombre u observación que empiece con «=» se guarda como texto (sin fórmulas)")
+
+    rp = gen(admin, 1, "pdf")
+    if pdf_disponible():
+        ok(rp.status_code == 200 and rp.mimetype == "application/pdf" and rp.data[:5] == b"%PDF-", "Centralizador en PDF (apaisado)")
+    else:
+        ok(rp.status_code == 501, "PDF no disponible: aviso (501); Excel y HTML siguen funcionando")
+    ok(gen(admin, 1, "otro").status_code == 400 and admin.get("/reportes/centralizador/generar?id_curso=99999").status_code == 404,
+       "formato no válido (400) y curso inexistente (404)")
+    ok(tr.get("/reportes/centralizador/generar?id_curso=3").status_code == 200, "transcriptor: Centralizador de cualquier curso")
+
+    # estudiante: solo su fila (con las estadísticas del curso) y solo cursos propios
+    crear_usuario("zoeuser", "Estudiante")
+    db_(lambda: (db.session.query(Alumno).filter_by(id=Z).update({"usr_id_login": db.session.query(Usuario.id).filter_by(usuario="zoeuser").scalar()}), db.session.commit()))
+    zc, _ = login("zoeuser", "Clave12345")
+    hz1 = gen(zc, 3).get_data(as_text=True)
+    ok("TM ZOE" in hz1 and "TM XAVIER" not in hz1 and "TM YARA" not in hz1 and "solo se muestran sus propios datos" in hz1
+       and "ESTUDIANTES INSCRITOS" in hz1, "estudiante: el Centralizador muestra solo su fila (estadísticas del curso completo)")
+    xz = load_workbook(io.BytesIO(gen(zc, 3, "xlsx").data))["ANVERSO"]
+    nombres_z = {c.value for c in xz["B"] if isinstance(c.value, str)}
+    ok("TM ZOE" in nombres_z and "TM XAVIER" not in nombres_z, "estudiante: el Excel tampoco incluye a otros estudiantes")
+    ok(gen(zc, 4).status_code == 404, "estudiante: un curso en el que no está inscrito → 404")
+    app.config["CENTRALIZADOR_ESTUDIANTE_VE_TODOS"] = True
+    ok("TM XAVIER" in gen(zc, 3).get_data(as_text=True), "configuración CENTRALIZADOR_ESTUDIANTE_VE_TODOS=1: nómina completa")
+    app.config["CENTRALIZADOR_ESTUDIANTE_VE_TODOS"] = False
+    ok(db_(lambda: AuditLog.query.filter_by(modulo="reporte_centralizador").count()) >= 5, "la generación del Centralizador queda en la auditoría")
 
     # integridad
     r = admin.post("/inscrito/1/eliminar", headers={"HX-Request": "true"})

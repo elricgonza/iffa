@@ -29,6 +29,13 @@ class Config:
     # Datos fijos del Boletín de Calificaciones (no existen como campos en la base de datos)
     BOLETIN_REGIMEN = os.environ.get("BOLETIN_REGIMEN", "ANUALIZADO")
     BOLETIN_CARRERA = os.environ.get("BOLETIN_CARRERA", "MÚSICA ACADÉMICA")
+    # Datos fijos del Centralizador de Calificaciones (no existen como campos en la base de datos)
+    CENTRALIZADOR_CODIGO_REGISTRO = os.environ.get("CENTRALIZADOR_CODIGO_REGISTRO", "80730917")
+    CENTRALIZADOR_TURNO = os.environ.get("CENTRALIZADOR_TURNO", "TARDE")
+    CENTRALIZADOR_CARACTER = os.environ.get("CENTRALIZADOR_CARACTER", "FISCAL")
+    CENTRALIZADOR_REGIMEN = os.environ.get("CENTRALIZADOR_REGIMEN", "ANUAL")
+    # 1 = el estudiante ve la nómina completa de su curso; 0 (por defecto) = solo su propia fila
+    CENTRALIZADOR_ESTUDIANTE_VE_TODOS = os.environ.get("CENTRALIZADOR_ESTUDIANTE_VE_TODOS", "0") == "1"
     # Archivo con las fechas de habilitación de la transcripción de notas
     CONFIG_NOTAS_PATH = os.environ.get(
         "CONFIG_NOTAS_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "config_notas.json"))

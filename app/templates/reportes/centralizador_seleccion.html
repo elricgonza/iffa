@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+{% from '_icons.html' import icono %}
+{% block title %}Centralizador de Calificaciones{% endblock %}
+{% block content %}
+<div class="mb-5 flex items-center gap-3">
+  <span class="grid h-11 w-11 place-items-center rounded-xl bg-brand-600 text-white shadow-sm">{{ icono('reportes', 'w-6 h-6') }}</span>
+  <div>
+    <h1 class="page-title">Centralizador de Calificaciones</h1>
+    <p class="page-sub">Reportes · nómina de estudiantes con las calificaciones finales por asignatura, estado y estadísticas del curso.</p>
+  </div>
+</div>
+
+<form method="get" action="{{ url_for('reportes.centralizador_generar') }}" target="_blank" class="card max-w-3xl p-6" x-data="{ curso: '{{ cursos[0][0] if cursos|length == 1 else '' }}' }">
+  <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+    <label class="field-label">Gestión
+      <select name="id_gestion_sel" class="field"
+              hx-get="{{ url_for('reportes.centralizador_cursos') }}" hx-target="#sel-curso" hx-trigger="change"
+              hx-vals='js:{id_gestion: event.target.value}' @change="curso = ''">
+        {% for v, l in gestiones %}<option value="{{ v }}">{{ l }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="field-label">Curso <span class="text-red-500">*</span>
+      <select id="sel-curso" name="id_curso" required class="field" x-model="curso" @htmx:after-swap="curso = $el.value">
+        {% set opciones = cursos %}{% set vacio = '— Seleccione curso —' if cursos else '— Sin cursos en esta gestión —' %}{% set actual = cursos[0][0] if cursos|length == 1 else '' %}
+        {% include 'crud/_options.html' %}
+      </select>
+    </label>
+    {% if not es_estudiante %}
+      <label class="field-label">Libro N° <span class="font-normal text-slate-400">(opcional)</span>
+        <input name="libro" maxlength="20" class="field" placeholder="p. ej. 10">
+      </label>
+      <label class="field-label">Folio N° <span class="font-normal text-slate-400">(opcional)</span>
+        <input name="folio" maxlength="20" class="field" placeholder="p. ej. 0015">
+      </label>
+    {% endif %}
+  </div>
+
+  {% if es_estudiante %}
+    <p class="mt-4 rounded-lg border border-brand-100 bg-brand-50 px-3 py-2 text-sm text-brand-800">
+      Solo se listan los cursos en los que usted está inscrito. El reporte muestra únicamente sus propios datos.</p>
+  {% endif %}
+
+  <div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-4">
+    <button name="formato" value="xlsx" :disabled="!curso" class="btn btn-outline">Descargar Excel</button>
+    {% if pdf_ok %}<button name="formato" value="pdf" :disabled="!curso" class="btn btn-outline">Descargar PDF</button>{% endif %}
+    <button name="formato" value="html" :disabled="!curso" class="btn btn-primary">Ver reporte</button>
+  </div>
+</form>
+{% endblock %}

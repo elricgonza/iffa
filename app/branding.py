@@ -17,9 +17,11 @@ NOMBRE = "Luis Felipe Arce"
 SISTEMA = "Sistema de Gestión Académica"
 RESOLUCIONES = "R.M. 685/2016 · R.M. 845/1993"   # figuran en el encabezado de los reportes
 CIUDAD = "La Paz – Bolivia"
+RM_CENTRALIZADOR = "034/1993-0685/2016-072/2024-0236/2025"   # resoluciones que figuran en el Centralizador
 LEMA = "Trabajando por la formación musical desde 1975"
 
-_VARIANTES = {"original": "logo.png", "color": "logo-sm.png", "blanco": "logo-blanco.png", "favicon": "favicon.png"}
+_VARIANTES = {"original": "logo.png", "color": "logo-sm.png", "blanco": "logo-blanco.png", "favicon": "favicon.png",
+              "ministerio": "ministerio-educacion.png"}
 
 
 def logo_path(variante="color"):

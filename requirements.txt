@@ -5,4 +5,5 @@ Flask-WTF>=1.2          # solo se usa la protección CSRF
 psycopg[binary]>=3.1    # driver PostgreSQL (URI: postgresql+psycopg://)
 python-dotenv>=1.0
 gunicorn>=22.0
+openpyxl>=3.1          # Excel del Centralizador
 weasyprint>=62          # PDF del Boletín (opcional; requiere libpango: sudo apt install libpango-1.0-0 libpangoft2-1.0-0)

@@ -1,0 +1,146 @@
+{% extends 'reportes/_base.html' %}
+{% set tamano_pagina = 'legal landscape' %}
+{% set ancho_hoja = '340mm' %}
+{% set ocultar_titulo = true %}
+
+{% block estilos %}
+  @page { margin: 9mm 10mm 12mm; }
+  .acciones { max-width: 340mm; margin: 14px auto 0; display: flex; gap: 8px; justify-content: flex-end; font-family: Arial, sans-serif; }
+  .acciones a, .acciones button { background: #193B68; color: #fff; border: 0; border-radius: 8px; padding: 8px 16px; font-size: 13px; cursor: pointer; text-decoration: none; }
+  .acciones .sec { background: #fff; color: #193B68; border: 1px solid #193B68; }
+  .cz-cab { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
+  .cz-cab td { vertical-align: middle; padding: 0; }
+  .cz-ministerio { height: 24mm; width: auto; }
+  .cz-instlogo { height: 15mm; width: auto; }
+  .cz-titulo { text-align: center; font-size: 17pt; font-weight: 800; letter-spacing: .02em; }
+  .cz-libro { border: 2px solid #111; padding: 4px 8px; font-weight: 800; font-size: 11pt; width: 46mm; }
+  .cz-meta { font-size: 8.5pt; }
+  .cz-meta b { font-weight: 700; }
+  table.cz { width: 100%; border-collapse: collapse; font-size: 8.5pt; table-layout: fixed; }
+  table.cz th, table.cz td { border: 1px solid #1e293b; padding: 2px 4px; }
+  table.cz .et { font-weight: 700; background: #fff; }
+  table.cz .val { font-weight: 700; text-transform: uppercase; }
+  table.cz .vd { background: #D6E3BC; font-weight: 700; text-align: center; }
+  table.cz .cod { background: #9BBB59; font-weight: 800; text-align: center; font-size: 9pt; }
+  table.cz td.vert { position: relative; height: 36mm; padding: 0; background: #D6E3BC; }
+  table.cz td.vert div { position: absolute; left: 50%; top: 50%; width: 34mm; text-align: center; font-weight: 700; font-size: 7.5pt; line-height: 1.1; transform: translate(-50%, -50%) rotate(-90deg); }
+  table.cz td.nm { font-size: 9pt; text-transform: uppercase; }
+  table.cz td.c { text-align: center; }
+  table.cz td.nota { text-align: center; font-weight: 600; font-size: 9.5pt; }
+  table.cz td.rojo { color: #b91c1c; font-weight: 800; }
+  table.cz td.estado { text-align: center; font-weight: 800; font-size: 8pt; }
+  .e-APROBADO { color: #047857; } .e-REPROBADO { color: #b91c1c; } .e-ABANDONO { color: #92400e; } .e-ENPROCESO { color: #64748b; }
+  table.cz tr.fila td { height: 6.2mm; }
+  table.cz tr.prom td { border: 0; text-align: center; font-weight: 700; color: #193B68; font-size: 8pt; }
+  table.cz tr.prom td.t { text-align: right; }
+  table.cz tr.prom td.p { border: 1px solid #1e293b; }
+  .cz-nota { margin: 4px 0 0; font-size: 7.5pt; color: #475569; font-style: italic; }
+  .cz-firmas { display: flex; justify-content: space-around; margin-top: 20mm; }
+  .cz-firmas div { width: 70mm; border-top: 1px dotted #111; text-align: center; font-size: 8pt; font-weight: 700; padding-top: 2px; }
+  .reverso { page-break-before: always; margin-top: 8mm; }
+  .bloques { width: 100%; border-collapse: separate; border-spacing: 8mm 0; margin-top: 18mm; table-layout: fixed; }
+  .bloques td { vertical-align: top; width: 25%; padding: 0 0 22mm; text-align: center; }
+  .bloques .doc { border-top: 1px dotted #111; padding-top: 2px; font-size: 8pt; min-height: 5mm; }
+  .bloques .mat { font-weight: 800; font-size: 8pt; text-transform: uppercase; margin-top: 2px; }
+  .estad { margin: 10mm auto 0; width: 150mm; border-collapse: collapse; font-size: 10pt; }
+  .estad caption { font-weight: 800; padding-bottom: 6mm; }
+  .estad th { background: #D8E4BC; border: 1px solid #111; padding: 3px 6px; }
+  .estad td { border: 1px solid #111; padding: 3px 6px; font-weight: 700; }
+  .estad td.n { text-align: center; width: 28mm; }
+{% endblock %}
+
+{% block acciones %}
+  {% if not pdf %}
+  <div class="acciones no-print">
+    <button onclick="window.print()">Imprimir</button>
+    <a href="{{ url_for('reportes.centralizador_generar', id_curso=args.get('id_curso'), formato='xlsx', libro=args.get('libro', ''), folio=args.get('folio', '')) }}">Descargar Excel</a>
+    {% if pdf_disponible %}<a href="{{ url_for('reportes.centralizador_generar', id_curso=args.get('id_curso'), formato='pdf', libro=args.get('libro', ''), folio=args.get('folio', '')) }}" target="_blank" rel="noopener">Descargar PDF</a>{% endif %}
+    <button class="sec" onclick="window.close()">Cerrar</button>
+  </div>
+  {% endif %}
+{% endblock %}
+
+{% block encabezado %}
+  <table class="cz-cab">
+    <tr>
+      <td style="width:22%"><img class="cz-ministerio" src="{{ logo_data_uri('ministerio') }}" alt="Ministerio de Educación"></td>
+      <td class="cz-titulo">CENTRALIZADOR DE CALIFICACIONES</td>
+      <td style="width:22%; text-align:right"><img class="cz-instlogo" src="{{ logo_data_uri('color') }}" alt="{{ SIGLA }}"></td>
+      <td style="width:48mm; padding-left:8px"><div class="cz-libro">LIBRO N° {{ d.libro }}<br>FOLIO N° {{ d.folio }}</div></td>
+    </tr>
+  </table>
+  <table class="cz-cab cz-meta">
+    <tr><td><b>{{ d.ciudad }}</b></td><td style="text-align:right"><b>Código de Registro:</b> {{ d.codigo_registro }} &nbsp;&nbsp; <b>TURNO:</b> {{ d.turno }}</td></tr>
+    <tr><td><b>INSTITUCIÓN:</b> <b>{{ d.institucion }}</b> &nbsp; <b>R.M.</b> {{ d.rm }}</td><td style="text-align:right"><b>CARÁCTER:</b> {{ d.caracter }}</td></tr>
+  </table>
+{% endblock %}
+
+{% block cuerpo %}
+  {% set M = d.materias|length %}
+  <table class="cz">
+    <colgroup>
+      <col style="width:8mm"><col style="width:46mm"><col style="width:50mm"><col style="width:24mm">
+      {% for m in d.materias %}<col>{% endfor %}
+      <col style="width:24mm"><col style="width:52mm">
+    </colgroup>
+    <thead>
+      {% set info = [('GESTIÓN:', d.gestion), ('NIVEL:', d.nivel), ('CARRERA:', d.carrera), ('INSTRUMENTO DE ESPECIALIDAD:', d.instrumento), ('RÉGIMEN:', d.regimen), ('CURSO:', d.curso)] %}
+      {% for et, val in info %}
+        <tr>
+          <td colspan="2" class="et">{{ et }}</td><td class="val">{{ val }}</td>
+          {% if loop.first %}
+            <th rowspan="7" class="vd">CÉDULA DE IDENTIDAD</th>
+            {% for m in d.materias %}<th class="cod">{{ m.codigo }}</th>{% endfor %}
+            <th rowspan="7" class="vd">ESTADO</th><th rowspan="7" class="vd">OBSERVACIONES</th>
+          {% elif loop.index == 2 %}
+            {% for m in d.materias %}<td rowspan="6" class="vert"><div>{{ m.nombre }}</div></td>{% endfor %}
+          {% endif %}
+        </tr>
+      {% endfor %}
+      <tr><th class="vd">N°</th><th colspan="2" class="vd">NÓMINA ESTUDIANTES</th></tr>
+    </thead>
+    <tbody>
+      {% for f in d.filas %}
+        <tr class="fila">
+          <td class="c"><b>{{ f.n }}</b></td><td colspan="2" class="nm">{{ f.nombre }}</td><td class="c">{{ f.ci or '' }}</td>
+          {% for v in f.notas %}<td class="nota {{ 'rojo' if v is not none and v < d.nota_minima }}">{{ '' if v is none else v }}</td>{% endfor %}
+          <td class="estado e-{{ f.estado|replace(' ', '') }}">{{ f.estado }}</td><td class="c" style="font-size:7.5pt">{{ f.obs }}</td>
+        </tr>
+      {% endfor %}
+      {% for i in range(d.filas_en_blanco) %}
+        <tr class="fila"><td class="c"><b>{{ d.filas|length + i + 1 }}</b></td><td colspan="2"></td><td></td>{% for m in d.materias %}<td></td>{% endfor %}<td></td><td></td></tr>
+      {% endfor %}
+      <tr class="prom"><td class="t" colspan="4">PROMEDIO POR ASIGNATURA</td>
+        {% for p in d.promedios %}<td class="p">{{ '' if p is none else p }}</td>{% endfor %}<td></td><td></td></tr>
+    </tbody>
+  </table>
+  {% if d.solo_propia %}<p class="cz-nota">Vista del estudiante: solo se muestran sus propios datos (el curso tiene {{ d.total_filas }} inscritos). Las estadísticas corresponden a todo el curso.</p>{% endif %}
+  <p class="cz-nota">Calificación final por asignatura (con segundo turno cuando corresponde) · en rojo: nota menor a la mínima de aprobación ({{ d.nota_minima }}) · ESTADO: APROBADO si aprobó todas las asignaturas del curso.</p>
+
+  <div class="cz-firmas"><div>RECTOR (A)</div><div>DIRECTOR(A) ACADÉMICO(A)</div></div>
+
+  <!-- REVERSO -->
+  <div class="reverso">
+    <table class="cz-cab">
+      <tr><td style="width:30%"><img class="cz-ministerio" src="{{ logo_data_uri('ministerio') }}" alt=""></td>
+          <td class="cz-titulo">CENTRALIZADOR DE CALIFICACIONES</td>
+          <td style="width:30%; text-align:right; font-size:9pt; font-weight:700">{{ d.curso }} · GESTIÓN {{ d.gestion }}<br><img class="cz-instlogo" src="{{ logo_data_uri('color') }}" alt=""></td></tr>
+    </table>
+    <table class="bloques">
+      {% for b in d.bloques %}
+        {% if loop.index0 % 4 == 0 %}<tr>{% endif %}
+        <td><div class="doc">{{ b.docente or '—' }}</div><div class="mat">{{ b.materia }}</div></td>
+        {% if loop.index0 % 4 == 3 or loop.last %}{% if loop.last %}{% for i in range((4 - (loop.length % 4)) % 4) %}<td></td>{% endfor %}{% endif %}</tr>{% endif %}
+      {% endfor %}
+    </table>
+    <table class="estad">
+      <caption>ESTADÍSTICAS</caption>
+      <thead><tr><th>DETALLE</th><th>CANTIDAD</th><th>%</th></tr></thead>
+      <tbody>
+        {% for det, cant in d.estadisticas %}
+          <tr><td>{{ det }}</td><td class="n">{{ cant }}</td><td class="n">{{ ((cant * 100 / d.estadisticas[0][1])|round|int ~ '%') if d.estadisticas[0][1] else '0%' }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

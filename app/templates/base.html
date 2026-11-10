@@ -65,6 +65,23 @@
             {{ icono(key) }}<span class="truncate">{{ label }}</span>
           </a>
         {% endfor %}
+        {% if titulo == 'Procesos' and reportes_menu %}
+          {% set en_reportes = request.blueprint == 'reportes' %}
+          <div x-data="{ abierto: {{ 'true' if en_reportes else 'false' }} }">
+            <a href="#" role="button" @click.prevent="abierto = !abierto" aria-expanded="false" :aria-expanded="abierto"
+               class="group flex items-center gap-3 rounded-lg px-3 py-2 hover:bg-white/10 hover:text-white {{ 'text-white font-semibold' if en_reportes else '' }}">
+              {{ icono('reportes') }}<span>Reportes</span>
+              <svg class="ml-auto h-4 w-4 flex-shrink-0 transition-transform" :class="abierto && 'rotate-90'" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 5l5 5-5 5"/></svg>
+            </a>
+            <div x-show="abierto" x-cloak class="mt-0.5 space-y-0.5 pl-6">
+              {% for label, url, key in reportes_menu %}
+                <a href="{{ url }}" @click="sidebar = false"
+                   class="flex items-center gap-2 rounded-lg border-l border-white/15 px-3 py-1.5 text-[13px] hover:bg-white/10 hover:text-white
+                          {{ 'bg-white/10 text-white font-semibold' if request.endpoint == 'reportes.' ~ key else '' }}">{{ label }}</a>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
       {% endfor %}
     </nav>
 

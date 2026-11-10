@@ -11,7 +11,7 @@
   <title>{{ titulo_reporte or 'Reporte' }} · {{ SIGLA }}</title>
   <link rel="icon" type="image/png" href="{{ logo_data_uri('favicon') }}">
   <style>
-    @page { size: A4; margin: 14mm 13mm 16mm;
+    @page { size: {{ tamano_pagina|default("A4") }}; margin: 14mm 13mm 16mm;
             @bottom-center { content: "{{ INSTITUCION }} {{ NOMBRE_INST }} · Página " counter(page) " de " counter(pages); font: 7.5pt "Helvetica Neue", Arial, sans-serif; color: #64748b; } }
     * { box-sizing: border-box; }
     body { font-family: "Inter", "Helvetica Neue", Arial, sans-serif; font-size: 10pt; color: #1e293b; margin: 0; }
@@ -29,7 +29,7 @@
     table.rpt td { padding: 5px 8px; border-bottom: 1px solid #e2e8f0; }
     table.rpt tr:nth-child(even) td { background: #f8fafc; }
     thead { display: table-header-group; } tr { break-inside: avoid; }
-    @media screen { body { background: #e2e8f0; } .hoja { max-width: 210mm; margin: 18px auto; background: #fff; padding: 12mm 13mm; box-shadow: 0 4px 24px rgba(15,35,62,.18); } }
+    @media screen { body { background: #e2e8f0; } .hoja { max-width: {{ ancho_hoja|default("210mm") }}; margin: 18px auto; background: #fff; padding: 12mm 13mm; box-shadow: 0 4px 24px rgba(15,35,62,.18); } }
     @media print { .no-print { display: none !important; } }
     {% block estilos %}{% endblock %}
   </style>
@@ -37,7 +37,7 @@
 <body>
   {% block acciones %}{% endblock %}
   <div class="hoja">
-    {% include 'reportes/_encabezado.html' %}
+    {% block encabezado %}{% include 'reportes/_encabezado.html' %}{% endblock %}
     {% block cuerpo %}{% endblock %}
   </div>
 </body>

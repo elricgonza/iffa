@@ -160,6 +160,21 @@ ministeriales y el lema, de `app/branding.py`.
 *Despliegue:* tras actualizar ejecute `flask seed` (otorga el permiso nuevo `nota_boletin` a los roles base sin tocar lo ya personalizado). El PDF usa WeasyPrint: `pip install -r requirements.txt` y
 `sudo apt install libpango-1.0-0 libpangoft2-1.0-0`; si no está instalado, el botón de PDF se oculta y queda «Imprimir».
 
+### Reportes → Centralizador de Calificaciones
+Menú **Procesos → Reportes → Centralizador de Calificaciones** (permiso `reporte_centralizador`: Administrador,
+Transcriptor y Estudiante). Se elige la gestión y el curso (y, opcionalmente, *Libro N°* y *Folio N°*) y se obtiene el
+reporte oficial del curso: **Excel** (hojas ANVERSO y REVERSO con el formato del Ministerio), **PDF** apaisado o vista en
+pantalla. Datos tomados de la base: nómina ordenada alfabéticamente (nombre y C.I.), calificación final por asignatura
+(promedio; el 2T solo reemplaza cuando el promedio no alcanza), estado (APROBADO / REPROBADO / ABANDONO / EN PROCESO),
+observaciones (abandono, observación de la inscripción y arrastres), docentes por asignatura y estadísticas con
+porcentajes (fórmulas en el Excel). Notas bajo la mínima se resaltan en rojo; se agrega el promedio por asignatura.
+El **Estudiante** solo ve los cursos en los que está inscrito y únicamente **su propia fila** (con las estadísticas del
+curso); con `CENTRALIZADOR_ESTUDIANTE_VE_TODOS=1` vería la nómina completa.
+Datos fijos que no existen en la base (configurables en `.env`): `CENTRALIZADOR_CODIGO_REGISTRO` (80730917),
+`CENTRALIZADOR_TURNO` (TARDE), `CENTRALIZADOR_CARACTER` (FISCAL), `CENTRALIZADOR_REGIMEN` (ANUAL) y
+`BOLETIN_CARRERA`; las R.M. están en `app/branding.py` (`RM_CENTRALIZADOR`). Requiere `openpyxl` (en `requirements.txt`).
+*Despliegue:* `pip install -r requirements.txt` y `flask seed` (otorga el permiso nuevo a los roles base).
+
 ### Identidad visual y reportes
 La interfaz usa la paleta institucional (azul marino `#193B68` y cian `#0390C6`, escala `brand-*` en
 `app/templates/_head.html`), tipografía Inter y componentes comunes (`btn`, `card`, `field`, `badge`) definidos

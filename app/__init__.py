@@ -17,6 +17,8 @@ GRUPOS_MENU = [
     ("Administración", ["usuario", "rol", "permiso", "auditoria"]),
 ]
 ACADEMICOS = ["gestion", "instrumento", "grado", "materia", "curso"]
+# Permisos que no pertenecen a un recurso CRUD (reportes)
+PERMISOS_REPORTES = {"reporte_centralizador": "Reportes · Centralizador de Calificaciones"}
 
 
 def create_app():
@@ -80,7 +82,10 @@ def create_app():
                     grupos.append((titulo, items))
         # gestion_activa: la gestión vigente (si por datos antiguos hubiera varias, la más reciente)
         from datetime import date
-        return {"now_year": date.today().year, "menu": grupos, "gestion_activa": activas[0] if activas else None, "gestiones_activas": len(activas)}
+        reportes_menu = []
+        if current_user.is_authenticated and current_user.has_perm("reporte_centralizador"):
+            reportes_menu.append(("Centralizador de Calificaciones", url_for("reportes.centralizador"), "centralizador"))
+        return {"reportes_menu": reportes_menu, "now_year": date.today().year, "menu": grupos, "gestion_activa": activas[0] if activas else None, "gestiones_activas": len(activas)}
 
     @app.after_request
     def _headers(resp):
@@ -120,7 +125,7 @@ def create_app():
 # --------------------------------------------------------------------- CLI
 def permisos_por_rol():
     from .crud import RESOURCES
-    todos = [p for r in RESOURCES.values() for p in r.permisos_aplicables()]
+    todos = [p for r in RESOURCES.values() for p in r.permisos_aplicables()] + list(PERMISOS_REPORTES)
 
     def ver(*claves):
         return [f"{k}_ver" for k in claves]
@@ -131,9 +136,11 @@ def permisos_por_rol():
         "Transcriptor": ver(*ACADEMICOS, "profesor") + [
             "alumno_ver", "alumno_crear", "alumno_editar",
             "inscrito_ver", "inscrito_crear", "inscrito_editar",
-            "asignado_ver", "asignado_crear", "asignado_editar", "nota_ver", "nota_editar", "nota_boletin"],
+            "asignado_ver", "asignado_crear", "asignado_editar", "nota_ver", "nota_editar", "nota_boletin",
+            "reporte_centralizador"],
         "Profesor": ver(*ACADEMICOS) + ["alumno_ver", "inscrito_ver", "asignado_ver", "nota_ver", "nota_editar"],
-        "Estudiante": ["alumno_ver", "inscrito_ver", "asignado_ver", "nota_ver", "pago_ver", "nota_boletin"],
+        "Estudiante": ["alumno_ver", "inscrito_ver", "asignado_ver", "nota_ver", "pago_ver", "nota_boletin",
+                       "reporte_centralizador"],
     }
 
 
@@ -159,6 +166,10 @@ def register_cli(app):
                     accion = p.rsplit("_", 1)[1]
                     db.session.add(Permiso(permiso=p, descripcion=f"{etiquetas.get(accion, accion.capitalize())} · {r.title}"))
                     nuevos.add(p)
+        for p, desc in PERMISOS_REPORTES.items():
+            if not Permiso.query.filter_by(permiso=p).first():
+                db.session.add(Permiso(permiso=p, descripcion=desc))
+                nuevos.add(p)
         db.session.flush()
         mapa = permisos_por_rol()
         for nombre, perms in mapa.items():
