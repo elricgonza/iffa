@@ -1,6 +1,7 @@
 """Reportes: Boletín de Calificaciones (HTML imprimible y PDF)."""
 import io
 import re
+import unicodedata
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -12,7 +13,7 @@ from sqlalchemy.orm import selectinload
 from . import branding
 from .models import Alumno, Asignado, Curso, Gestion, Grado, Inscrito, Materia, Profesor, db
 from .resources import _opts_gestion_filtro, like
-from .security import log_accion, mi_alumno, scope_kind
+from .security import log_accion, mi_alumno, mi_profesor, scope_kind
 
 reportes_bp = Blueprint("reportes", __name__, url_prefix="/reportes")
 
@@ -533,6 +534,245 @@ def centralizador_generar():
                         headers={"Content-Disposition": f'attachment; filename="{nombre}.xlsx"', "Cache-Control": "no-store"})
     html = render_template("reportes/centralizador.html", d=datos, pdf=formato == "pdf", pdf_disponible=pdf_disponible(),
                            args=request.args, titulo_reporte=f"Centralizador de Calificaciones · {datos['curso']}")
+    if formato == "html":
+        return html
+    if not pdf_disponible():
+        return Response("La generación de PDF no está disponible en este servidor (instale weasyprint). "
+                        "Puede usar el Excel o «Imprimir».", status=501, mimetype="text/plain")
+    from weasyprint import HTML
+    return Response(HTML(string=html).write_pdf(), mimetype="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="{nombre}.pdf"', "Cache-Control": "no-store"})
+
+
+# =========================================================================================
+#  ALUMNOS ASIGNADOS A PROFESOR (por gestión): agrupado por curso, PDF / Excel / pantalla
+# =========================================================================================
+def _clave_orden(texto):
+    """Orden alfabético en español: sin tildes ni mayúsculas, y la ñ después de la n."""
+    t = unicodedata.normalize("NFC", (texto or "").lower()).replace("ñ", "n{")
+    return "".join(c for c in unicodedata.normalize("NFD", t) if unicodedata.category(c) != "Mn")
+
+
+def datos_alumnos_profesor(profesor, gestion):
+    """Alumnos (inscritos y vigentes) con materias asignadas al profesor en los cursos de la gestión,
+    agrupados por curso y ordenados por apellido paterno, apellido materno y nombre."""
+    asigs = (Asignado.query.join(Curso, Asignado.id_curso == Curso.id)
+             .join(Inscrito, Asignado.id_inscrito == Inscrito.id)
+             .filter(Asignado.id_profesor == profesor.id, Curso.id_gestion == gestion.id,
+                     Inscrito.inscrito.is_(True), Inscrito.abandono.is_(False))
+             .options(selectinload(Asignado.materia), selectinload(Asignado.curso).selectinload(Curso.grado),
+                      selectinload(Asignado.inscrito).selectinload(Inscrito.alumno),
+                      selectinload(Asignado.inscrito).selectinload(Inscrito.curso).selectinload(Curso.grado))
+             .all())
+    por_curso = {}
+    for a in asigs:
+        por_curso.setdefault(a.curso.id, {"curso": a.curso, "filas": []})["filas"].append(a)
+    grupos = []
+    for g in sorted(por_curso.values(), key=lambda g: (_clave_orden(g["curso"].grado.nivel), _clave_orden(g["curso"].grado.grado),
+                                                         _clave_orden(g["curso"].paralelo), g["curso"].id)):
+        filas = sorted(g["filas"], key=lambda a: (_clave_orden(a.inscrito.alumno.paterno), _clave_orden(a.inscrito.alumno.materno),
+                                                  _clave_orden(a.inscrito.alumno.nombre), _clave_orden(a.materia.materia)))
+        salida = []
+        for n, a in enumerate(filas, 1):
+            al, ci = a.inscrito.alumno, a.inscrito.curso
+            salida.append({"n": n, "paterno": al.paterno or "", "materno": al.materno or "", "nombre": al.nombre,
+                           "nombre_completo": " ".join(p for p in (al.paterno, al.materno, al.nombre) if p),
+                           "ci": al.ci, "materia": a.materia.materia, "sigla": a.materia.sigla or "",
+                           "curso_insc": f"{_nombre_curso(ci)} {ci.paralelo}", "arrastre": a.id_curso != a.inscrito.id_curso})
+        grupos.append({"curso": f"{_nombre_curso(g['curso'])} {g['curso'].paralelo}", "filas": salida,
+                       "n_alumnos": len({a.inscrito.id_alumno for a in filas}), "n_asignaciones": len(salida)})
+    hoy = date.today()
+    return {
+        "profesor": profesor.nombre_completo, "profesor_ci": profesor.ci, "formacion": profesor.formacion or "",
+        "gestion": gestion.gestion, "plan": gestion.plan, "grupos": grupos,
+        "total_alumnos": len({a.inscrito.id_alumno for a in asigs}), "total_asignaciones": len(asigs),
+        "total_cursos": len(grupos), "materias": sorted({a.materia.materia for a in asigs}, key=_clave_orden),
+        "fecha_reporte": f"{hoy.day} de {MESES[hoy.month - 1]} de {hoy.year}",
+    }
+
+
+def alumnos_profesor_xlsx(d):
+    """Excel: hoja «Alumnos asignados» (reporte agrupado por curso) y hoja «Datos» (plana, con filtros)."""
+    import os
+    from openpyxl import Workbook
+    from openpyxl.drawing.image import Image as XLImage
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+
+    AZUL, AZUL_CLARO, CIAN = "193B68", "D7E6FA", "0390C6"
+    thin = Side(style="thin", color="CBD5E1")
+    borde = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    def poner(ws, ref, valor, font=None, align=None, fill=None, border=None):
+        c = ws[ref]
+        c.value = valor
+        if isinstance(valor, str):
+            c.data_type = "s"  # texto literal: nunca fórmulas
+        if font: c.font = font
+        if align: c.alignment = align
+        if fill: c.fill = PatternFill("solid", fgColor=fill)
+        if border: c.border = border
+        return c
+
+    def pagina(ws, orient="portrait"):
+        ws.page_setup.orientation, ws.page_setup.paperSize = orient, 9  # A4
+        ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = 1, 0
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.page_margins.left = ws.page_margins.right = 0.5
+        ws.oddFooter.center.text = f"{branding.SIGLA} · {d['profesor']} · Gestión {d['gestion']} · Página &P de &N"
+        ws.oddFooter.center.size = 8
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Alumnos asignados"
+    ws.sheet_view.showGridLines = False
+    for col, w in {"A": 8, "B": 40, "C": 13, "D": 36, "E": 32}.items():
+        ws.column_dimensions[col].width = w
+    img = XLImage(os.path.join(current_app.static_folder, "img", "logo-sm.png"))
+    img.width, img.height = round(img.width * 62 / img.height), 62
+    ws.add_image(img, "A1")
+    for fila, (txt, sz, negrita, color) in enumerate(((branding.INSTITUCION.upper(), 9, False, "475569"), (branding.NOMBRE.upper(), 16, True, "0F233E"),
+                                                      (f"{branding.RESOLUCIONES} · {branding.CIUDAD}", 8, True, AZUL)), 1):
+        ws.merge_cells(f"B{fila}:E{fila}")
+        poner(ws, f"B{fila}", txt, Font(name="Calibri", size=sz, bold=negrita, color=color), Alignment(vertical="center"))
+    for r in (1, 2, 3):
+        ws.row_dimensions[r].height = 21
+    ws.merge_cells("A5:E5")
+    poner(ws, "A5", "ALUMNOS ASIGNADOS A PROFESOR", Font(name="Calibri", size=10, bold=True, color=CIAN))
+    ws.merge_cells("A6:E6")
+    poner(ws, "A6", d["profesor"].upper(), Font(name="Calibri", size=18, bold=True, color="0F233E"))
+    ws.row_dimensions[6].height = 26
+    info = [f"Gestión {d['gestion']} · {d['plan']}"]
+    if d["profesor_ci"]:
+        info.append(f"C.I. {d['profesor_ci']}")
+    if d["formacion"]:
+        info.append(d["formacion"])
+    ws.merge_cells("A7:E7")
+    poner(ws, "A7", " · ".join(info), Font(name="Calibri", size=10, color="475569"))
+    ws.merge_cells("A8:E8")
+    poner(ws, "A8", f"{d['total_alumnos']} alumno(s) · {d['total_asignaciones']} asignación(es) · {d['total_cursos']} curso(s) · "
+                    f"Emitido el {d['fecha_reporte']}", Font(name="Calibri", size=9, italic=True, color="64748B"))
+    r = 10
+    for g in d["grupos"]:
+        ws.merge_cells(f"A{r}:E{r}")
+        poner(ws, f"A{r}", f"CURSO: {g['curso'].upper()}   —   {g['n_alumnos']} alumno(s) · {g['n_asignaciones']} asignación(es)",
+              Font(name="Calibri", size=11, bold=True, color="FFFFFF"), Alignment(vertical="center", indent=1), AZUL)
+        ws.row_dimensions[r].height = 22
+        r += 1
+        for col, titulo in zip("ABCDE", ("N°", "APELLIDOS Y NOMBRES", "C.I.", "MATERIA ASIGNADA", "CURSO DE INSCRIPCIÓN")):
+            poner(ws, f"{col}{r}", titulo, Font(name="Calibri", size=9, bold=True, color=AZUL),
+                  Alignment(horizontal="center", vertical="center", wrap_text=True), AZUL_CLARO, borde)
+        r += 1
+        for i, f in enumerate(g["filas"]):
+            zebra = "F8FAFC" if i % 2 else None
+            vals = (f["n"], f["nombre_completo"].upper(), f["ci"], f["materia"], f["curso_insc"] + (" (arrastre)" if f["arrastre"] else ""))
+            for col, v in zip("ABCDE", vals):
+                poner(ws, f"{col}{r}", v, Font(name="Calibri", size=10, bold=col == "B", color="0369A1" if (col == "E" and f["arrastre"]) else None),
+                      Alignment(horizontal="center" if col in "AC" else "left", vertical="center"), zebra, borde)
+            r += 1
+        r += 1
+    if not d["grupos"]:
+        ws.merge_cells("A10:E10")
+        poner(ws, "A10", "El profesor no tiene alumnos asignados en esta gestión.", Font(name="Calibri", size=11, italic=True, color="64748B"))
+    pagina(ws)
+
+    # hoja plana, útil para filtrar y ordenar en Excel
+    dt = wb.create_sheet("Datos")
+    cab = ("Profesor", "Gestión", "Curso (asignación)", "Apellido paterno", "Apellido materno", "Nombre", "C.I.", "Materia", "Curso de inscripción", "Arrastre")
+    for j, (titulo, ancho) in enumerate(zip(cab, (30, 9, 28, 20, 20, 24, 12, 34, 28, 10)), 1):
+        c = dt.cell(row=1, column=j, value=titulo)
+        c.font, c.fill = Font(name="Calibri", size=10, bold=True, color="FFFFFF"), PatternFill("solid", fgColor=AZUL)
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        dt.column_dimensions[c.column_letter].width = ancho
+    fila = 2
+    for g in d["grupos"]:
+        for f in g["filas"]:
+            for j, v in enumerate((d["profesor"], d["gestion"], g["curso"], f["paterno"], f["materno"], f["nombre"], f["ci"], f["materia"],
+                                   f["curso_insc"], "Sí" if f["arrastre"] else "No"), 1):
+                c = dt.cell(row=fila, column=j, value=v)
+                if isinstance(v, str):
+                    c.data_type = "s"
+            fila += 1
+    dt.freeze_panes = "A2"
+    dt.auto_filter.ref = f"A1:J{max(fila - 1, 1)}"
+    pagina(dt, "landscape")
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+# ----------------------------------------------------------------------- rutas
+def _autorizar_alumnos_profesor():
+    """Permiso «reporte_alumnos_profesor»; administrador/transcriptor (alcance total) o profesor vinculado."""
+    if not current_user.has_perm("reporte_alumnos_profesor") or scope_kind() not in ("all", "profesor"):
+        abort(403)
+
+
+def _gestiones_reporte():
+    """[(id, etiqueta)] de las gestiones (la activa primero y marcada)."""
+    ges = Gestion.query.order_by(Gestion.activo.desc(), Gestion.gestion.desc(), Gestion.id.desc()).all()
+    return [(g.id, f"{g} (activa)" if g.activo else str(g)) for g in ges]
+
+
+def _profesores_con_asignaciones(id_gestion):
+    q = (db.session.query(Profesor).join(Asignado, Asignado.id_profesor == Profesor.id)
+         .join(Curso, Asignado.id_curso == Curso.id).filter(Curso.id_gestion == id_gestion).distinct())
+    return sorted(((p.id, p.nombre_completo) for p in q), key=lambda t: _clave_orden(t[1]))
+
+
+@reportes_bp.route("/alumnos-profesor")
+@login_required
+def alumnos_profesor():
+    """Pantalla: elegir gestión (y profesor, para administrador/transcriptor)."""
+    _autorizar_alumnos_profesor()
+    gestiones = _gestiones_reporte()
+    activa = Gestion.query.filter(Gestion.activo.is_(True)).order_by(Gestion.gestion.desc()).first()
+    id_gestion = activa.id if activa else (gestiones[0][0] if gestiones else None)
+    es_profesor = scope_kind() == "profesor"
+    return render_template("reportes/alumnos_profesor_seleccion.html", gestiones=gestiones, id_gestion=id_gestion,
+                           es_profesor=es_profesor, mi_profesor=mi_profesor() if es_profesor else None,
+                           profesores=[] if es_profesor or not id_gestion else _profesores_con_asignaciones(id_gestion),
+                           pdf_ok=pdf_disponible())
+
+
+@reportes_bp.route("/alumnos-profesor/profesores")
+@login_required
+def alumnos_profesor_profesores():
+    """Profesores con asignaciones en la gestión elegida (HTMX)."""
+    _autorizar_alumnos_profesor()
+    if scope_kind() != "all":
+        abort(403)
+    ops = _profesores_con_asignaciones(request.args.get("id_gestion", type=int) or 0)
+    return render_template("crud/_options.html", opciones=ops,
+                           vacio="— Seleccione profesor —" if ops else "— Sin profesores con asignaciones —",
+                           actual=ops[0][0] if len(ops) == 1 else "")
+
+
+@reportes_bp.route("/alumnos-profesor/generar")
+@login_required
+def alumnos_profesor_generar():
+    _autorizar_alumnos_profesor()
+    gestion = db.session.get(Gestion, request.args.get("id_gestion", type=int) or 0)
+    if scope_kind() == "profesor":  # un profesor solo obtiene su propio reporte
+        profesor = mi_profesor()
+    else:
+        profesor = db.session.get(Profesor, request.args.get("id_profesor", type=int) or 0)
+    if gestion is None or profesor is None:
+        abort(404)
+    formato = request.args.get("formato", "html")
+    if formato not in ("html", "pdf", "xlsx"):
+        abort(400)
+    datos = datos_alumnos_profesor(profesor, gestion)
+    log_accion("CREATE", "reporte_alumnos_profesor", profesor.id,
+               {"profesor": datos["profesor"], "gestion": datos["gestion"], "formato": formato})
+    db.session.commit()
+    nombre = re.sub(r"[^A-Za-z0-9_-]+", "", f"alumnos_profesor_{profesor.id}_{gestion.gestion}")
+    if formato == "xlsx":
+        return Response(alumnos_profesor_xlsx(datos),
+                        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        headers={"Content-Disposition": f'attachment; filename="{nombre}.xlsx"', "Cache-Control": "no-store"})
+    html = render_template("reportes/alumnos_profesor.html", d=datos, pdf=formato == "pdf", pdf_disponible=pdf_disponible(),
+                           id_gestion=gestion.id, id_profesor=profesor.id, meta_reporte=f"Gestión {gestion.gestion}",
+                           titulo_reporte=f"Alumnos asignados a Profesor · {datos['profesor']}")
     if formato == "html":
         return html
     if not pdf_disponible():

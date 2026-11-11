@@ -175,6 +175,16 @@ Datos fijos que no existen en la base (configurables en `.env`): `CENTRALIZADOR_
 `BOLETIN_CARRERA`; las R.M. están en `app/branding.py` (`RM_CENTRALIZADOR`). Requiere `openpyxl` (en `requirements.txt`).
 *Despliegue:* `pip install -r requirements.txt` y `flask seed` (otorga el permiso nuevo a los roles base).
 
+### Reportes → Alumnos asignados a Profesor
+Menú **Procesos → Reportes → Alumnos asignados a Profesor** (permiso `reporte_alumnos_profesor`: Administrador,
+Profesor y Transcriptor). Se elige la gestión (por defecto la activa) y el profesor (el Administrador/Transcriptor
+eligen entre los profesores con asignaciones en esa gestión; un **Profesor** obtiene siempre **su propio** reporte).
+Muestra, con el nombre del profesor como título, la gestión y totales: por cada **curso** (donde el profesor dicta la
+materia), la lista de alumnos **ordenada por apellido paterno, apellido materno y nombre** (orden alfabético en español)
+con C.I., materia asignada y curso de inscripción (con paralelo; las materias de arrastre se marcan). No incluye alumnos
+que abandonaron. Exporta a **PDF** (A4), **Excel** (hoja con el reporte agrupado y hoja «Datos» plana con filtros) o se
+imprime desde la pantalla. *Despliegue:* `flask seed` (otorga el permiso nuevo a los roles base).
+
 ### Identidad visual y reportes
 La interfaz usa la paleta institucional (azul marino `#193B68` y cian `#0390C6`, escala `brand-*` en
 `app/templates/_head.html`), tipografía Inter y componentes comunes (`btn`, `card`, `field`, `badge`) definidos

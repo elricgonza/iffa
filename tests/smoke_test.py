@@ -21,7 +21,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app import create_app  # noqa: E402
 from app.models import (Alumno, Asignado, AuditLog, Curso, Gestion, Grado, Inscrito, Instrumento, Materia, Nota, Pago,  # noqa: E402
                         Permiso, Profesor, Rol, Usuario, db)
-from app.reportes import centralizador_xlsx, datos_centralizador, pdf_disponible  # noqa: E402
+from app.reportes import (_clave_orden, alumnos_profesor_xlsx, centralizador_xlsx, datos_alumnos_profesor,  # noqa: E402
+                          datos_centralizador, pdf_disponible)
 
 app = create_app()
 app.config["WTF_CSRF_ENABLED"] = False
@@ -735,6 +736,110 @@ if True:
     ok("TM XAVIER" in gen(zc, 3).get_data(as_text=True), "configuración CENTRALIZADOR_ESTUDIANTE_VE_TODOS=1: nómina completa")
     app.config["CENTRALIZADOR_ESTUDIANTE_VE_TODOS"] = False
     ok(db_(lambda: AuditLog.query.filter_by(modulo="reporte_centralizador").count()) >= 5, "la generación del Centralizador queda en la auditoría")
+
+    # ---- Reportes → Alumnos asignados a Profesor
+    roles_ap = lambda: db_(lambda: {r.rol for r in Rol.query.all() if any(p.permiso == "reporte_alumnos_profesor" for p in r.permisos)})
+    ok(roles_ap() == {"Administrador", "Profesor", "Transcriptor"}, "permiso reporte_alumnos_profesor: administrador, profesor y transcriptor")
+    def _quitar_ap():
+        db.session.execute(db.text("DELETE FROM rol_permiso WHERE id_permiso IN (SELECT id FROM permiso WHERE permiso='reporte_alumnos_profesor')"))
+        db.session.execute(db.text("DELETE FROM permiso WHERE permiso='reporte_alumnos_profesor'"))
+        db.session.commit()
+    db_(_quitar_ap)
+    ok("reporte_alumnos_profesor" in app.test_cli_runner().invoke(args=["seed"]).output and roles_ap() == {"Administrador", "Profesor", "Transcriptor"},
+       "flask seed otorga el permiso de este reporte en una base existente")
+
+    for nombre, cli in (("administrador", admin), ("transcriptor", tr), ("profesor", p1)):
+        ok("Alumnos asignados a Profesor" in cli.get("/").get_data(as_text=True) and cli.get("/reportes/alumnos-profesor").status_code == 200,
+           f"menú Reportes → Alumnos asignados a Profesor disponible para {nombre}")
+    ok("Alumnos asignados a Profesor" not in a1.get("/").get_data(as_text=True) and "Alumnos asignados a Profesor" not in cn.get("/").get_data(as_text=True)
+       and a1.get("/reportes/alumnos-profesor").status_code == 403 and cn.get("/reportes/alumnos-profesor").status_code == 403
+       and a1.get("/reportes/alumnos-profesor/generar?id_gestion=1&id_profesor=1").status_code == 403, "estudiante y consulta: sin acceso a este reporte")
+    ok(p2.get("/reportes/alumnos-profesor").status_code == 403, "profesor sin vincular: sin acceso (nunca ve datos de otros)")
+    ok(app.test_client().get("/reportes/alumnos-profesor").status_code == 302, "este reporte exige sesión iniciada")
+    sel_admin = admin.get("/reportes/alumnos-profesor").get_data(as_text=True)
+    sel_prof = p1.get("/reportes/alumnos-profesor").get_data(as_text=True)
+    ok('id="sel-profesor"' in sel_admin and 'id="sel-profesor"' not in sel_prof and "Pérez Ana" in sel_prof, "selector: el administrador elige profesor; el profesor ve solo el suyo")
+    good, det = bien_formado(sel_admin)
+    ok(good, f"HTML bien formado: pantalla del reporte {'' if good else det}")
+    ok("Pérez Ana" in admin.get("/reportes/alumnos-profesor/profesores?id_gestion=1", headers=HXH).get_data(as_text=True)
+       and "Sin profesores" in admin.get("/reportes/alumnos-profesor/profesores?id_gestion=99999", headers=HXH).get_data(as_text=True)
+       and p1.get("/reportes/alumnos-profesor/profesores?id_gestion=1").status_code == 403, "selector de profesor según la gestión (solo administrador/transcriptor)")
+
+    # datos de prueba: el profesor 1 dicta las materias de los cursos de Técnico Medio (incluidos arrastres)
+    db_(lambda: (db.session.query(Asignado).filter(Asignado.id_curso.in_([C1, C1b, C2])).update({"id_profesor": 1}, synchronize_session=False), db.session.commit()))
+    gen_ap = lambda cli, fmt="html", ges=1, prof=1, extra="": cli.get(f"/reportes/alumnos-profesor/generar?id_gestion={ges}&id_profesor={prof}&formato={fmt}{extra}")
+    hp = gen_ap(admin).get_data(as_text=True)
+    ok(all(t in hp for t in ("ALUMNOS ASIGNADOS A PROFESOR", "Pérez Ana", "Gestión 2026", "Rojas Carla", "Tm Xavier", "Lenguaje Musical",
+                              "CURSO: PIANO I A", "CURSO: 1RO. TÉCNICO MEDIO A", "APELLIDOS Y NOMBRES", "MATERIA ASIGNADA", "CURSO DE INSCRIPCIÓN", "arrastre")),
+       "reporte (HTML): profesor como título, gestión, grupos por curso y columnas pedidas")
+    good, det = bien_formado(hp)
+    ok(good, f"HTML bien formado: reporte {'' if good else det}")
+
+    def _datos():
+        d = datos_alumnos_profesor(db.session.get(Profesor, 1), db.session.get(Gestion, 1))
+        ordenados = all(
+            [(_clave_orden(f["paterno"]), _clave_orden(f["materno"]), _clave_orden(f["nombre"]), _clave_orden(f["materia"])) for f in g["filas"]]
+            == sorted((_clave_orden(f["paterno"]), _clave_orden(f["materno"]), _clave_orden(f["nombre"]), _clave_orden(f["materia"])) for f in g["filas"])
+            for g in d["grupos"])
+        return d, ordenados
+    d_ap, ordenados = db_(_datos)
+    nombres_curso = [g["curso"] for g in d_ap["grupos"]]
+    ok(ordenados and len(nombres_curso) >= 4 and len(set(nombres_curso)) == len(nombres_curso)
+       and all([f["n"] for f in g["filas"]] == list(range(1, len(g["filas"]) + 1)) for g in d_ap["grupos"]),
+       "agrupado por curso (sin repetir) y ordenado por apellido paterno, apellido materno, nombre (y materia)")
+    grupo_2do = next(g for g in d_ap["grupos"] if g["curso"].startswith("2do"))
+    ok([f["nombre"] for f in grupo_2do["filas"] if f["materia"] == "B1"] == ["Xavier", "Yara", "Zoe"]
+       and any(f["arrastre"] for g in d_ap["grupos"] for f in g["filas"]), "orden por nombre dentro del mismo apellido y marca de arrastre")
+    ok(d_ap["total_alumnos"] == len({f["nombre_completo"] for g in d_ap["grupos"] for f in g["filas"]})
+       and d_ap["total_asignaciones"] == sum(len(g["filas"]) for g in d_ap["grupos"]), "totales de alumnos y asignaciones coherentes")
+    ok(_clave_orden("Muñoz") > _clave_orden("Munoz") and _clave_orden("Ñandú") > _clave_orden("Nuñez") and _clave_orden("Árbol") < _clave_orden("Berna"),
+       "orden alfabético en español (tildes y ñ)")
+
+    # el profesor solo obtiene SU reporte aunque pida otro
+    hp1 = gen_ap(p1, prof=2).get_data(as_text=True)
+    ok("Pérez Ana" in hp1 and "GÓMEZ LUIS" not in hp1.upper(), "profesor: siempre su propio reporte (ignora el id_profesor pedido)")
+    ok(gen_ap(tr).status_code == 200, "transcriptor: reporte de cualquier profesor")
+
+    # exclusiones y gestión
+    db_(lambda: (db.session.query(Inscrito).filter_by(id_alumno=Y, id_curso=C1).update({"abandono": True}), db.session.commit()))
+    d2, _o = db_(_datos)
+    g_c1 = next(g for g in d2["grupos"] if g["curso"].startswith("1ro. Técnico Medio A"))
+    ok(all(f["nombre"] != "Yara" for f in g_c1["filas"]), "alumnos que abandonaron no se incluyen")
+    db_(lambda: (db.session.query(Inscrito).filter_by(id_alumno=Y, id_curso=C1).update({"abandono": False}), db.session.commit()))
+    db_(lambda: (db.session.query(Asignado).filter_by(id=old_asig).update({"id_profesor": 1}), db.session.commit()))
+    ok("Vega" in gen_ap(admin, ges=2).get_data(as_text=True) and "Vega" not in gen_ap(admin, ges=1).get_data(as_text=True),
+       "el reporte respeta la gestión elegida")
+    db_(lambda: (db.session.query(Asignado).filter_by(id=old_asig).update({"id_profesor": None}), db.session.commit()))
+
+    rx = gen_ap(admin, "xlsx")
+    ok(rx.status_code == 200 and "spreadsheetml" in rx.mimetype and "attachment" in rx.headers["Content-Disposition"], "exportar a Excel (.xlsx)")
+    import io
+    from openpyxl import load_workbook
+    wb2 = load_workbook(io.BytesIO(rx.data))
+    hoja1 = {c.value for fila in wb2["Alumnos asignados"].iter_rows() for c in fila if c.value is not None}
+    filas_datos = list(wb2["Datos"].iter_rows(min_row=2, values_only=True))
+    ok(wb2.sheetnames == ["Alumnos asignados", "Datos"] and {"ALUMNOS ASIGNADOS A PROFESOR", "PÉREZ ANA", "ROJAS CARLA", "APELLIDOS Y NOMBRES"} <= hoja1
+       and len(filas_datos) == d_ap["total_asignaciones"] + sum(1 for _ in []) and wb2["Datos"].auto_filter.ref.startswith("A1:J")
+       and wb2["Datos"]["D1"].value == "Apellido paterno", "Excel: hoja del reporte agrupado y hoja «Datos» plana con filtros")
+    def _inyeccion_ap():
+        d = datos_alumnos_profesor(db.session.get(Profesor, 1), db.session.get(Gestion, 1))
+        d["grupos"][0]["filas"][0]["nombre_completo"] = "=1+1"
+        d["grupos"][0]["filas"][0]["nombre"] = "=HYPERLINK(\"http://x\")"
+        w = load_workbook(io.BytesIO(alumnos_profesor_xlsx(d)))
+        return [c.data_type for fila in w["Alumnos asignados"].iter_rows() for c in fila if c.value == "=1+1"] + \
+               [c.data_type for fila in w["Datos"].iter_rows() for c in fila if isinstance(c.value, str) and c.value.startswith("=HYPERLINK")]
+    tipos = db_(_inyeccion_ap)
+    ok(len(tipos) == 2 and all(t == "s" for t in tipos), "Excel: valores que empiezan con «=» se guardan como texto (sin fórmulas)")
+
+    rpd = gen_ap(admin, "pdf")
+    if pdf_disponible():
+        ok(rpd.status_code == 200 and rpd.mimetype == "application/pdf" and rpd.data[:5] == b"%PDF-", "exportar a PDF")
+    else:
+        ok(rpd.status_code == 501, "PDF no disponible: aviso (501); Excel y HTML siguen funcionando")
+    ok(gen_ap(admin, "otro").status_code == 400 and gen_ap(admin, prof=99999).status_code == 404 and gen_ap(admin, ges=99999).status_code == 404,
+       "formato no válido (400); profesor o gestión inexistentes (404)")
+    ok(db_(lambda: AuditLog.query.filter_by(modulo="reporte_alumnos_profesor").count()) >= 6, "la generación del reporte queda en la auditoría")
+    db_(lambda: (db.session.query(Asignado).filter(Asignado.id_curso.in_([C1, C1b, C2])).update({"id_profesor": None}, synchronize_session=False), db.session.commit()))
 
     # integridad
     r = admin.post("/inscrito/1/eliminar", headers={"HX-Request": "true"})

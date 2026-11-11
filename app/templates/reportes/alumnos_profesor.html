@@ -1,0 +1,74 @@
+{% extends 'reportes/_base.html' %}
+{% set ocultar_titulo = true %}
+
+{% block estilos %}
+  .acciones { max-width: 210mm; margin: 14px auto 0; display: flex; gap: 8px; justify-content: flex-end; font-family: Arial, sans-serif; }
+  .acciones a, .acciones button { background: #193B68; color: #fff; border: 0; border-radius: 8px; padding: 8px 16px; font-size: 13px; cursor: pointer; text-decoration: none; }
+  .acciones .sec { background: #fff; color: #193B68; border: 1px solid #193B68; }
+  .kicker { margin: 14px 0 0; font-size: 8.5pt; font-weight: 700; letter-spacing: .2em; color: #0390C6; }
+  h1.prof { margin: 2px 0 4px; font-size: 20pt; line-height: 1.1; color: #0F233E; text-transform: uppercase; }
+  .datos { font-size: 9.5pt; color: #475569; margin: 0 0 10px; }
+  .datos b { color: #193B68; }
+  .resumen { display: flex; gap: 8px; margin: 8px 0 14px; }
+  .resumen .caja { flex: 1; border: 1px solid #cbd5e1; border-radius: 6px; padding: 5px 8px; text-align: center; }
+  .resumen .caja b { display: block; font-size: 15pt; color: #193B68; line-height: 1.1; }
+  .resumen .caja span { font-size: 7.5pt; color: #64748b; text-transform: uppercase; letter-spacing: .05em; }
+  .barra { display: flex; justify-content: space-between; align-items: center; background: #193B68; color: #fff; padding: 5px 9px;
+           font-weight: 700; font-size: 10pt; border-radius: 3px 3px 0 0; break-after: avoid; }
+  .barra small { font-weight: 500; font-size: 8pt; color: #A8C7F0; }
+  table.al { width: 100%; border-collapse: collapse; font-size: 9pt; margin-bottom: 14px; }
+  table.al th { background: #D7E6FA; color: #193B68; font-size: 8pt; letter-spacing: .04em; text-align: left; padding: 4px 6px; border: 1px solid #cbd5e1; }
+  table.al td { padding: 3.5px 6px; border: 1px solid #e2e8f0; }
+  table.al tbody tr:nth-child(even) td { background: #f8fafc; }
+  table.al td.n, table.al td.ci { text-align: center; }
+  table.al td.nom { font-weight: 700; text-transform: uppercase; }
+  table.al .arr { color: #0369A1; font-style: italic; font-size: 7.5pt; }
+  .vacio { padding: 18px; color: #64748b; border: 1px dashed #cbd5e1; border-radius: 6px; text-align: center; }
+  .pie { margin-top: 6px; font-size: 7.5pt; color: #64748b; }
+{% endblock %}
+
+{% block acciones %}
+  {% if not pdf %}
+  <div class="acciones no-print">
+    <button onclick="window.print()">Imprimir</button>
+    <a href="{{ url_for('reportes.alumnos_profesor_generar', id_gestion=id_gestion, id_profesor=id_profesor, formato='xlsx') }}">Descargar Excel</a>
+    {% if pdf_disponible %}<a href="{{ url_for('reportes.alumnos_profesor_generar', id_gestion=id_gestion, id_profesor=id_profesor, formato='pdf') }}" target="_blank" rel="noopener">Descargar PDF</a>{% endif %}
+    <button class="sec" onclick="window.close()">Cerrar</button>
+  </div>
+  {% endif %}
+{% endblock %}
+
+{% block cuerpo %}
+  <p class="kicker">ALUMNOS ASIGNADOS A PROFESOR</p>
+  <h1 class="prof">{{ d.profesor }}</h1>
+  <p class="datos"><b>Gestión {{ d.gestion }}</b> · {{ d.plan }}
+    {% if d.profesor_ci %} · C.I. {{ d.profesor_ci }}{% endif %}{% if d.formacion %} · {{ d.formacion }}{% endif %}
+    · Emitido el {{ d.fecha_reporte }}</p>
+
+  <div class="resumen">
+    <div class="caja"><b>{{ d.total_alumnos }}</b><span>Alumnos</span></div>
+    <div class="caja"><b>{{ d.total_asignaciones }}</b><span>Asignaciones</span></div>
+    <div class="caja"><b>{{ d.total_cursos }}</b><span>Cursos</span></div>
+    <div class="caja"><b>{{ d.materias|length }}</b><span>Materias</span></div>
+  </div>
+
+  {% for g in d.grupos %}
+    <div class="barra"><span>CURSO: {{ g.curso|upper }}</span><small>{{ g.n_alumnos }} alumno(s) · {{ g.n_asignaciones }} asignación(es)</small></div>
+    <table class="al">
+      <colgroup><col style="width:6%"><col style="width:33%"><col style="width:11%"><col style="width:22%"><col style="width:28%"></colgroup>
+      <thead><tr><th style="text-align:center">N°</th><th>APELLIDOS Y NOMBRES</th><th style="text-align:center">C.I.</th><th>MATERIA ASIGNADA</th><th>CURSO DE INSCRIPCIÓN</th></tr></thead>
+      <tbody>
+        {% for f in g.filas %}
+          <tr><td class="n">{{ f.n }}</td><td class="nom">{{ f.nombre_completo }}</td><td class="ci">{{ f.ci or '—' }}</td>
+              <td>{{ f.materia }}</td><td>{{ f.curso_insc }}{% if f.arrastre %}<br><span class="arr">arrastre</span>{% endif %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="vacio">El profesor no tiene alumnos asignados en esta gestión.</div>
+  {% endfor %}
+  {% if d.grupos %}
+    <p class="pie">Agrupado por curso (donde el profesor dicta la materia) y ordenado por apellido paterno, apellido materno y nombre.
+      «Curso de inscripción» es el curso del alumno; «arrastre» indica una materia de otro curso. No se incluyen alumnos que abandonaron.</p>
+  {% endif %}
+{% endblock %}

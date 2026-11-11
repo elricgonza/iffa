@@ -18,7 +18,8 @@ GRUPOS_MENU = [
 ]
 ACADEMICOS = ["gestion", "instrumento", "grado", "materia", "curso"]
 # Permisos que no pertenecen a un recurso CRUD (reportes)
-PERMISOS_REPORTES = {"reporte_centralizador": "Reportes · Centralizador de Calificaciones"}
+PERMISOS_REPORTES = {"reporte_centralizador": "Reportes · Centralizador de Calificaciones",
+                     "reporte_alumnos_profesor": "Reportes · Alumnos asignados a Profesor"}
 
 
 def create_app():
@@ -85,6 +86,8 @@ def create_app():
         reportes_menu = []
         if current_user.is_authenticated and current_user.has_perm("reporte_centralizador"):
             reportes_menu.append(("Centralizador de Calificaciones", url_for("reportes.centralizador"), "centralizador"))
+        if current_user.is_authenticated and current_user.has_perm("reporte_alumnos_profesor"):
+            reportes_menu.append(("Alumnos asignados a Profesor", url_for("reportes.alumnos_profesor"), "alumnos_profesor"))
         return {"reportes_menu": reportes_menu, "now_year": date.today().year, "menu": grupos, "gestion_activa": activas[0] if activas else None, "gestiones_activas": len(activas)}
 
     @app.after_request
@@ -137,8 +140,9 @@ def permisos_por_rol():
             "alumno_ver", "alumno_crear", "alumno_editar",
             "inscrito_ver", "inscrito_crear", "inscrito_editar",
             "asignado_ver", "asignado_crear", "asignado_editar", "nota_ver", "nota_editar", "nota_boletin",
-            "reporte_centralizador"],
-        "Profesor": ver(*ACADEMICOS) + ["alumno_ver", "inscrito_ver", "asignado_ver", "nota_ver", "nota_editar"],
+            "reporte_centralizador", "reporte_alumnos_profesor"],
+        "Profesor": ver(*ACADEMICOS) + ["alumno_ver", "inscrito_ver", "asignado_ver", "nota_ver", "nota_editar",
+                                        "reporte_alumnos_profesor"],
         "Estudiante": ["alumno_ver", "inscrito_ver", "asignado_ver", "nota_ver", "pago_ver", "nota_boletin",
                        "reporte_centralizador"],
     }
