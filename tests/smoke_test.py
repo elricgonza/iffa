@@ -841,6 +841,23 @@ if True:
     ok(db_(lambda: AuditLog.query.filter_by(modulo="reporte_alumnos_profesor").count()) >= 6, "la generación del reporte queda en la auditoría")
     db_(lambda: (db.session.query(Asignado).filter(Asignado.id_curso.in_([C1, C1b, C2])).update({"id_profesor": None}, synchronize_session=False), db.session.commit()))
 
+    # ---- Cursos: filtro por instrumento
+    iPiano = db_(lambda: Instrumento.query.filter_by(instrumento="Piano").first().id)
+    pag_cursos = admin.get("/curso/").get_data(as_text=True)
+    ok('name="id_instrumento"' in pag_cursos and "Instrumento: todos" in pag_cursos and "Piano" in pag_cursos and "Violín" in pag_cursos,
+       "Cursos: combo «Instrumento» con todos los instrumentos")
+    cur_i = lambda **kw: admin.get("/curso/?" + "&".join(f"{k}={v}" for k, v in kw.items()), headers=HX).get_data(as_text=True)
+    ok("Piano I" in cur_i(id_instrumento=iPiano) and "Técnico Medio" not in cur_i(id_instrumento=iPiano), "Cursos: filtro por instrumento (Piano)")
+    ok("Técnico Medio" in cur_i(id_instrumento=iv) and "Piano I" not in cur_i(id_instrumento=iv), "Cursos: filtro por instrumento (Violín)")
+    ok("Técnico Medio" in cur_i() and "Piano I" in cur_i(), "Cursos: sin filtro de instrumento se ven todos (de la gestión activa)")
+    ok("Piano I" in cur_i(id_instrumento=iPiano, id_gestion="todas") and "2025" in cur_i(id_instrumento=iPiano, id_gestion="todas")
+       and "2025" not in cur_i(id_instrumento=iPiano), "Cursos: el filtro de instrumento se combina con el de gestión")
+    ok("Técnico Medio" in cur_i(id_instrumento="abc") and "Violín" in cur_i(), "Cursos: un parámetro de instrumento manipulado no rompe la pantalla")
+    ok("Piano I" in cur_i(q="piano") and "Técnico Medio" not in cur_i(q="piano"), "Cursos: la búsqueda también encuentra por nombre del instrumento")
+    ok(f'<option value="{iv}" selected>' in admin.get(f"/curso/?id_instrumento={iv}").get_data(as_text=True), "Cursos: el instrumento elegido queda seleccionado en el combo")
+    good, det = bien_formado(pag_cursos)
+    ok(good, f"HTML bien formado: Cursos {'' if good else det}")
+
     # integridad
     r = admin.post("/inscrito/1/eliminar", headers={"HX-Request": "true"})
     ok("notas" in r.headers.get("HX-Trigger", ""), "no se elimina inscripción con notas")
